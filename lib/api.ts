@@ -1,6 +1,14 @@
 // Tiny client-side fetch helpers.
 import type { Profile, FoodLog, WeightLog, FoodItem, AnalysisResult, MealType, DayTotals } from "./types";
 
+const baseUrl = typeof window !== "undefined"
+  ? ""
+  : (process.env.NEXT_PUBLIC_BASE_URL || "https://cut-eta.vercel.app");
+
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return fetch(`${baseUrl}${path}`, init);
+}
+
 async function j<T>(res: Response): Promise<T> {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
@@ -8,69 +16,69 @@ async function j<T>(res: Response): Promise<T> {
 }
 
 export const api = {
-  getProfile: () => fetch("/api/profile").then((r) => j<{ profile: Profile | null }>(r)),
+  getProfile: () => apiFetch("/api/profile").then((r) => j<{ profile: Profile | null }>(r)),
   saveProfile: (body: unknown) =>
-    fetch("/api/profile", { method: "POST", body: JSON.stringify(body) }).then((r) =>
+    apiFetch("/api/profile", { method: "POST", body: JSON.stringify(body) }).then((r) =>
       j<{ profile: Profile }>(r)
     ),
 
   getDay: (date: string) =>
-    fetch(`/api/log?date=${date}`).then((r) => j<{ items: FoodLog[] }>(r)),
+    apiFetch(`/api/log?date=${date}`).then((r) => j<{ items: FoodLog[] }>(r)),
   addItems: (date: string, items: FoodItem[], source: string, meal: MealType) =>
-    fetch("/api/log", { method: "POST", body: JSON.stringify({ date, items, source, meal }) }).then((r) =>
+    apiFetch("/api/log", { method: "POST", body: JSON.stringify({ date, items, source, meal }) }).then((r) =>
       j<{ items: FoodLog[] }>(r)
     ),
   editItem: (body: unknown) =>
-    fetch("/api/log", { method: "PATCH", body: JSON.stringify(body) }).then((r) =>
+    apiFetch("/api/log", { method: "PATCH", body: JSON.stringify(body) }).then((r) =>
       j<{ items: FoodLog[] }>(r)
     ),
   deleteItem: (id: number, date: string) =>
-    fetch(`/api/log?id=${id}&date=${date}`, { method: "DELETE" }).then((r) =>
+    apiFetch(`/api/log?id=${id}&date=${date}`, { method: "DELETE" }).then((r) =>
       j<{ items: FoodLog[] }>(r)
     ),
 
   analyze: (image: string, mimeType: string, hint?: string) =>
-    fetch("/api/analyze", { method: "POST", body: JSON.stringify({ image, mimeType, hint }) }).then(
+    apiFetch("/api/analyze", { method: "POST", body: JSON.stringify({ image, mimeType, hint }) }).then(
       (r) => j<AnalysisResult>(r)
     ),
   chat: (message: string, currentItems: FoodItem[], history: { role: "user" | "model"; text: string }[]) =>
-    fetch("/api/chat", { method: "POST", body: JSON.stringify({ message, currentItems, history }) }).then(
+    apiFetch("/api/chat", { method: "POST", body: JSON.stringify({ message, currentItems, history }) }).then(
       (r) => j<AnalysisResult>(r)
     ),
 
-  getRecent: () => fetch("/api/recent").then((r) => j<{ items: FoodItem[] }>(r)),
+  getRecent: () => apiFetch("/api/recent").then((r) => j<{ items: FoodItem[] }>(r)),
   suggest: (remaining: DayTotals, meal: MealType) =>
-    fetch("/api/suggest", { method: "POST", body: JSON.stringify({ ...remaining, meal }) }).then((r) =>
+    apiFetch("/api/suggest", { method: "POST", body: JSON.stringify({ ...remaining, meal }) }).then((r) =>
       j<{ text: string }>(r)
     ),
 
-  getWater: (date: string) => fetch(`/api/water?date=${date}`).then((r) => j<{ ml: number }>(r)),
+  getWater: (date: string) => apiFetch(`/api/water?date=${date}`).then((r) => j<{ ml: number }>(r)),
   addWater: (date: string, delta: number) =>
-    fetch("/api/water", { method: "POST", body: JSON.stringify({ date, delta }) }).then((r) =>
+    apiFetch("/api/water", { method: "POST", body: JSON.stringify({ date, delta }) }).then((r) =>
       j<{ ml: number }>(r)
     ),
 
   getSettings: () =>
-    fetch("/api/settings").then((r) =>
+    apiFetch("/api/settings").then((r) =>
       j<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(r)
     ),
   saveSettings: (body: { gemini_api_key?: string; gemini_model?: string }) =>
-    fetch("/api/settings", { method: "POST", body: JSON.stringify(body) }).then((r) =>
+    apiFetch("/api/settings", { method: "POST", body: JSON.stringify(body) }).then((r) =>
       j<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(r)
     ),
   testSettings: () =>
-    fetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "test" }) }).then((r) =>
+    apiFetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "test" }) }).then((r) =>
       j<{ ok: boolean; model: string; error?: string }>(r)
     ),
 
-  getWeights: () => fetch("/api/weight").then((r) => j<{ weights: WeightLog[] }>(r)),
+  getWeights: () => apiFetch("/api/weight").then((r) => j<{ weights: WeightLog[] }>(r)),
   addWeight: (date: string, weight_kg: number) =>
-    fetch("/api/weight", { method: "POST", body: JSON.stringify({ date, weight_kg }) }).then((r) =>
+    apiFetch("/api/weight", { method: "POST", body: JSON.stringify({ date, weight_kg }) }).then((r) =>
       j<{ weights: WeightLog[] }>(r)
     ),
 
   getProgress: (days: number) =>
-    fetch(`/api/progress?days=${days}`).then((r) =>
+    apiFetch(`/api/progress?days=${days}`).then((r) =>
       j<{ days: import("@/app/api/progress/route").DayRow[] }>(r)
     ),
 };
