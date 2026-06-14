@@ -1,36 +1,118 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Cut — AI calorie & macro tracker
 
-## Getting Started
+A minimal, liquid-glass calorie tracker built for cutting. Snap a photo of your
+food, an AI reads the plate, and your day's calories + macros update
+automatically. Black-and-white UI, pastel charts, full dark mode.
 
-First, run the development server:
+![stack](https://img.shields.io/badge/Next.js-16-black) ![ai](https://img.shields.io/badge/Gemini-2.5%20Pro-c9b8f0) ![db](https://img.shields.io/badge/Postgres-cloud%20sync-a8d0f0)
+
+## Features
+
+- **📸 Snap & log** — photograph a meal; Gemini 2.5 Pro estimates each item's
+  calories, protein, carbs, fat, fiber, sugar & sodium, with a **confidence
+  score per item**. Low-confidence items get flagged before they're added.
+- **💬 Coach that learns** — correct the AI in plain English ("that's 1 cup of
+  rice, not 2"). Corrections are saved and fed back into future prompts, so it
+  gets more accurate the more you use it.
+- **⌨️ Manual AI entry** — just type "1 cup rice, 6 oz chicken" and it logs the macros.
+- **🎯 Smart onboarding** — height/weight/activity/goal → Mifflin-St Jeor TDEE,
+  a recommended calorie deficit, and protein/carb/fat/fiber targets, with safety
+  warnings if your pace is too aggressive.
+- **📊 Progress** — pastel charts for calories, protein, fiber and weight trend,
+  plus adherence and weight-change stats.
+- **🍽️ Meals** — food is grouped into breakfast / lunch / dinner / snacks, each
+  with its own calorie subtotal. The right meal is auto-picked by time of day.
+- **⚡ Quick add (no AI)** — re-log foods you eat often with one tap, straight
+  from a "recent foods" row — saves your limited API calls.
+- **📅 History** — step back to any past day to review, edit, or back-fill it.
+- **🤖 "What should I eat?"** — AI suggests a meal that fits your remaining
+  macros for the day, prioritising protein.
+- **🔥 Streaks** — a logging streak to keep you consistent.
+- **📱 Installable (PWA)** — add it to your phone's home screen and it runs
+  full-screen like a native app, offline shell included.
+- **🔄 Cloud sync** — log on your phone, review on your laptop. Everything's in Postgres.
+- **💧 Extras** — water tracking, daily reset, inline-editable items, weight logging.
+
+## Nutrition model (the research)
+
+- **BMR**: Mifflin-St Jeor — the most accurate predictive equation for adults.
+- **TDEE**: BMR × activity factor (1.2–1.9).
+- **Deficit**: ~275 / 550 / 825 kcal/day for relaxed / steady / aggressive
+  (1 kg fat ≈ 7700 kcal). Floored at 1500 (men) / 1200 (women) kcal.
+- **Protein**: 2.0 g/kg bodyweight to preserve muscle on a deficit (ISSN).
+- **Fat**: 0.8 g/kg (hormone floor). **Carbs**: fill the rest. **Fiber**: 14 g / 1000 kcal.
+
+## Setup
+
+### 1. Install
+
+```bash
+npm install
+```
+
+### 2. Get a Gemini API key (free)
+
+Create one at **https://aistudio.google.com/apikey**.
+
+### 3. Get a Postgres database (free, for cloud sync)
+
+Any Postgres works. Easiest free options:
+
+- **Neon** — https://neon.tech → create project → copy the connection string.
+- **Supabase** — https://supabase.com → Project → Settings → Database → URI.
+- **Vercel Postgres** — add it from the Vercel dashboard (auto-sets the env var).
+
+> A local Postgres also works for development — the schema is created
+> automatically on first run. But for phone↔laptop sync you want a **hosted** DB.
+
+### 4. Configure env
+
+Copy the template and fill it in:
+
+```bash
+cp .env.example .env.local
+```
+
+```ini
+GEMINI_API_KEY=AIza...             # optional — you can also paste it in-app
+GEMINI_MODEL=gemini-2.5-pro        # swap to a newer model anytime
+DATABASE_URL=postgres://user:pass@host/db?sslmode=require
+```
+
+> **Tip:** the Gemini key is optional in the env file. You can link it from
+> **Profile → AI connection** instead — paste your key, hit **Link**, and it
+> auto-runs a **connection test**. A key set there is stored in your database
+> (so it syncs across devices) and overrides the env var. The status dot tells
+> you at a glance whether a working key is linked.
+
+### 5. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 — you'll be taken through onboarding first.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy to Vercel
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Push this folder to a Git repo and import it in Vercel (or use the `vercel` CLI).
+2. In **Project → Settings → Environment Variables**, add `GEMINI_API_KEY`,
+   `GEMINI_MODEL`, and `DATABASE_URL`.
+3. Deploy. The database schema auto-creates on the first request.
 
-## Learn More
+Since it's just for you, there's no auth — all data lives under a single user.
 
-To learn more about Next.js, take a look at the following resources:
+## Switching the AI model
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Everything routes through env vars in `lib/gemini.ts`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `GEMINI_MODEL` — used for image analysis (default `gemini-2.5-pro`).
+- `GEMINI_TEXT_MODEL` — optional, used for text chat/manual entry. Defaults to
+  `GEMINI_MODEL`. Set it to `gemini-2.5-flash` to make typing faster/cheaper.
 
-## Deploy on Vercel
+When Google ships a newer model, just change `GEMINI_MODEL` — no code changes.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Tech
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind v4 · Recharts ·
+`postgres` · `@google/genai`.

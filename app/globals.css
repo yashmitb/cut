@@ -1,26 +1,226 @@
 @import "tailwindcss";
 
+/* ===========================================================================
+   Cut — liquid glass dark theme
+   Black & white base, pastel accents reserved for data viz.
+   ========================================================================= */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #07070a;
+  --bg-2: #0d0d12;
+  --fg: #f4f4f7;
+  --muted: #9a9aa6;
+  --faint: #6a6a76;
+  --line: rgba(255, 255, 255, 0.08);
+  --glass: rgba(255, 255, 255, 0.045);
+  --glass-strong: rgba(255, 255, 255, 0.07);
+
+  /* pastel data palette */
+  --p-protein: #f6a6b8; /* pink */
+  --p-carbs: #a8d0f0;   /* blue */
+  --p-fat: #f7d9a0;     /* butter */
+  --p-fiber: #b5e8c9;   /* mint */
+  --p-cal: #c9b8f0;     /* lavender */
+  --p-water: #a9e4ec;   /* aqua */
+  --p-warn: #f7c59f;    /* peach */
+  --p-good: #b5e8c9;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.01em;
+}
+
+/* ambient pastel glows that sit behind the glass */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(48rem 48rem at 12% -8%, rgba(201, 184, 240, 0.10), transparent 60%),
+    radial-gradient(40rem 40rem at 100% 0%, rgba(168, 208, 240, 0.08), transparent 55%),
+    radial-gradient(46rem 46rem at 50% 120%, rgba(181, 232, 201, 0.07), transparent 60%);
+  pointer-events: none;
+}
+
+/* ---- glass surfaces ---- */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid var(--line);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.06) inset,
+    0 12px 40px -12px rgba(0, 0, 0, 0.6);
+}
+
+.glass-strong {
+  background: var(--glass-strong);
+  backdrop-filter: blur(30px) saturate(170%);
+  -webkit-backdrop-filter: blur(30px) saturate(170%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 0 rgba(255, 255, 255, 0.08) inset,
+    0 20px 60px -16px rgba(0, 0, 0, 0.7);
+}
+
+.card {
+  border-radius: 24px;
+}
+
+/* subtle interactive lift */
+.pressable {
+  transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.18s ease, border-color 0.18s ease;
+}
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* ---- buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 16px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  padding: 0.85rem 1.25rem;
+  transition: transform 0.16s ease, background 0.16s ease, opacity 0.16s ease;
+  cursor: pointer;
+  user-select: none;
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary {
+  background: #ffffff;
+  color: #0a0a0a;
+}
+.btn-primary:hover:not(:disabled) { background: #ededed; }
+.btn-ghost {
+  background: var(--glass-strong);
+  color: var(--fg);
+  border: 1px solid var(--line);
+}
+.btn-ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.1); }
+
+/* ---- inputs ---- */
+.field {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.85rem 1rem;
+  color: var(--fg);
+  font-size: 1rem;
+  transition: border-color 0.16s ease, background 0.16s ease;
+}
+.field::placeholder { color: var(--faint); }
+.field:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* segmented control */
+.seg {
+  display: flex;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px;
+  gap: 4px;
+}
+.seg-item {
+  flex: 1;
+  text-align: center;
+  padding: 0.6rem 0.5rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.16s ease;
+  white-space: nowrap;
+}
+.seg-item[data-on="true"] {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0a0a0a;
+}
+
+/* chips / badges */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+
+/* number transitions */
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* scrollbars */
+::-webkit-scrollbar { width: 0; height: 0; }
+
+/* fade/slide entrance */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.rise { animation: rise 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.rise-1 { animation-delay: 0.04s; }
+.rise-2 { animation-delay: 0.08s; }
+.rise-3 { animation-delay: 0.12s; }
+.rise-4 { animation-delay: 0.16s; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.09) 37%, rgba(255,255,255,0.04) 63%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease infinite;
+  border-radius: 12px;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.8s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .skeleton, .spin { animation: none; }
 }

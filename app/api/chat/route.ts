@@ -1,0 +1,40 @@
+import { NextRequest, NextResponse } from "next/server";
+import { ensureSchema, sql, USER_ID } from "@/lib/db";
+import { converse, type ChatTurn } from "@/lib/gemini";
+import type { FoodItem } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+async function recentCorrections(): Promise<string[]> {
+  const rows = await sql<{ note: string }[]>`
+    SELECT note FROM corrections WHERE user_id = ${USER_ID}
+    ORDER BY created_at DESC LIMIT 15`;
+  return rows.map((r) => r.note);
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    await ensureSchema();
+    const b = await req.json();
+    const message: string = (b.message || "").trim();
+    const currentItems: FoodItem[] = b.currentItems || [];
+    const history: ChatTurn[] = b.history || [];
+    if (!message) return NextResponse.json({ error: "Empty message." }, { status: 400 });
+
+    const corrections = await recentCorrections();
+    const result = await converse({ message, currentItems, history, corrections });
+
+    // Learning: a message that refines an existing analysis is genuine feedback.
+    // Persist it so future analyses apply the same correction.
+    if (currentItems.length > 0) {
+      const food = currentItems[0]?.name || "meal";
+      await sql`INSERT INTO corrections (user_id, food, note) VALUES (${USER_ID}, ${food}, ${message.slice(0, 280)})`;
+    }
+
+    return NextResponse.json(result);
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+}
