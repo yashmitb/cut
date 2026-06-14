@@ -3,7 +3,7 @@ import postgres from "postgres";
 // Single-user app — everything is keyed to one fixed id.
 export const USER_ID = "me";
 
-const url = process.env.DATABASE_URL;
+const url = process.env.POSTGRES_URL_NON_POOLING || process.env.DATABASE_URL || process.env.POSTGRES_URL;
 
 declare global {
   // reuse the connection across hot reloads in dev
