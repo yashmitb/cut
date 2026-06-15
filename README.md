@@ -75,7 +75,7 @@ cp .env.example .env.local
 
 ```ini
 GEMINI_API_KEY=AIza...             # optional — you can also paste it in-app
-GEMINI_MODEL=gemini-2.5-pro        # swap to a newer model anytime
+GEMINI_MODEL=gemini-2.5-flash      # free-tier friendly; swap to pro/newer anytime
 DATABASE_URL=postgres://user:pass@host/db?sslmode=require
 ```
 
@@ -139,7 +139,7 @@ keeps it refreshed. Sign out from **Profile → Sign out**.
 
 Everything routes through env vars in `lib/gemini.ts`:
 
-- `GEMINI_MODEL` — used for image analysis (default `gemini-2.5-pro`).
+- `GEMINI_MODEL` — used for image analysis (default `gemini-2.5-flash`).
 - `GEMINI_TEXT_MODEL` — optional, used for text chat/manual entry. Defaults to
   `GEMINI_MODEL`. Set it to `gemini-2.5-flash` to make typing faster/cheaper.
 

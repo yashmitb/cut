@@ -16,7 +16,7 @@ export interface GeminiConfig {
 async function resolveConfig(userId: string): Promise<GeminiConfig> {
   let key = "";
   let source: KeySource = "none";
-  let visionModel = process.env.GEMINI_MODEL || "gemini-2.5-pro";
+  let visionModel = process.env.GEMINI_MODEL || "gemini-2.5-flash";
   let textModel = process.env.GEMINI_TEXT_MODEL || "";
   try {
     await ensureSchema();

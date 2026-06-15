@@ -170,7 +170,7 @@ export default function ApiKeyCard() {
       <details className="text-sm">
         <summary className="text-xs text-[var(--muted)] cursor-pointer select-none">Advanced — model</summary>
         <div className="flex gap-2 mt-2">
-          <input className="field !text-sm" value={modelInput} onChange={(e) => setModelInput(e.target.value)} placeholder="gemini-2.5-pro" />
+          <input className="field !text-sm" value={modelInput} onChange={(e) => setModelInput(e.target.value)} placeholder="gemini-2.5-flash" />
           <button onClick={saveModel} disabled={saving || !modelInput.trim()} className="btn btn-ghost !px-3 !text-xs">Save</button>
         </div>
         <p className="text-[11px] text-[var(--faint)] mt-1.5">Vision model for photos. Swap to e.g. a newer Gemini when available.</p>
