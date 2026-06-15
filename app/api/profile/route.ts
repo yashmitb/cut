@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureSchema, sql, USER_ID } from "@/lib/db";
+import { ensureSchema, sql } from "@/lib/db";
+import { getUserId, unauthorized } from "@/lib/supabase/auth";
 import { computeTargets, todayLocal } from "@/lib/nutrition";
 import type { Activity, Profile, Rate, Sex, Units } from "@/lib/types";
 
@@ -9,7 +10,9 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await ensureSchema();
-    const rows = await sql<Profile[]>`SELECT * FROM profile WHERE id = ${USER_ID}`;
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
+    const rows = await sql<Profile[]>`SELECT * FROM profile WHERE id = ${userId}`;
     return NextResponse.json({ profile: rows[0] ?? null });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
@@ -19,6 +22,8 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
     const b = await req.json();
 
     const input = {
@@ -44,7 +49,7 @@ export async function POST(req: NextRequest) {
         id, name, age, sex, height_cm, weight_kg, goal_weight_kg, activity, rate, units,
         target_calories, target_protein, target_carbs, target_fat, target_fiber, updated_at
       ) VALUES (
-        ${USER_ID}, ${name}, ${input.age}, ${input.sex}, ${input.height_cm}, ${input.weight_kg},
+        ${userId}, ${name}, ${input.age}, ${input.sex}, ${input.height_cm}, ${input.weight_kg},
         ${input.goal_weight_kg}, ${input.activity}, ${input.rate}, ${units},
         ${t.target_calories}, ${t.target_protein}, ${t.target_carbs}, ${t.target_fat}, ${t.target_fiber}, now()
       )
@@ -61,11 +66,11 @@ export async function POST(req: NextRequest) {
     // seed today's weight so the progress chart has a starting point
     await sql`
       INSERT INTO weight_logs (user_id, log_date, weight_kg)
-      VALUES (${USER_ID}, ${todayLocal()}, ${input.weight_kg})
+      VALUES (${userId}, ${todayLocal()}, ${input.weight_kg})
       ON CONFLICT (user_id, log_date) DO UPDATE SET weight_kg = EXCLUDED.weight_kg
     `;
 
-    const rows = await sql<Profile[]>`SELECT * FROM profile WHERE id = ${USER_ID}`;
+    const rows = await sql<Profile[]>`SELECT * FROM profile WHERE id = ${userId}`;
     return NextResponse.json({ profile: rows[0], targets: t });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

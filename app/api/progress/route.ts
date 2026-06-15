@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureSchema, sql, USER_ID } from "@/lib/db";
+import { ensureSchema, sql } from "@/lib/db";
+import { getUserId, unauthorized } from "@/lib/supabase/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +18,8 @@ export interface DayRow {
 export async function GET(req: NextRequest) {
   try {
     await ensureSchema();
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
     const days = Math.min(365, Math.max(7, Number(req.nextUrl.searchParams.get("days")) || 30));
 
     const nutrition = await sql<
@@ -29,13 +32,13 @@ export async function GET(req: NextRequest) {
              ROUND(SUM(fat))::int AS fat,
              ROUND(SUM(fiber))::int AS fiber
       FROM food_logs
-      WHERE user_id = ${USER_ID} AND log_date >= CURRENT_DATE - ${days}::int
+      WHERE user_id = ${userId} AND log_date >= CURRENT_DATE - ${days}::int
       GROUP BY log_date ORDER BY log_date ASC`;
 
     const weights = await sql<{ date: string; weight_kg: number }[]>`
       SELECT log_date::text AS date, weight_kg
       FROM weight_logs
-      WHERE user_id = ${USER_ID} AND log_date >= CURRENT_DATE - ${days}::int
+      WHERE user_id = ${userId} AND log_date >= CURRENT_DATE - ${days}::int
       ORDER BY log_date ASC`;
 
     const wMap = new Map(weights.map((w) => [w.date, w.weight_kg]));

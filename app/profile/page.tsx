@@ -16,6 +16,7 @@ import {
 import type { Activity, Profile, Rate, Sex, Units } from "@/lib/types";
 import { CheckIcon, ScaleIcon, WarnIcon } from "@/components/Icons";
 import ApiKeyCard from "@/components/ApiKeyCard";
+import AccountCard from "@/components/AccountCard";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -131,6 +132,9 @@ export default function ProfilePage() {
         <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
         {profile?.name && <p className="text-[var(--muted)]">{profile.name}</p>}
       </header>
+
+      {/* account / sign out */}
+      <AccountCard />
 
       {/* current plan summary */}
       {targets && (

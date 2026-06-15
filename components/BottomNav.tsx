@@ -6,8 +6,10 @@ import { CameraIcon, ChartIcon, HomeIcon, UserIcon } from "./Icons";
 
 export default function BottomNav() {
   const path = usePathname();
-  // hide chrome on onboarding + the capture flow (they're full-screen)
-  if (path === "/onboarding" || path === "/add") return null;
+  // hide chrome on onboarding, capture flow, and auth pages (full-screen)
+  if (path === "/onboarding" || path === "/add" || path === "/login" || path.startsWith("/auth")) {
+    return null;
+  }
 
   const tab = (href: string, Icon: typeof HomeIcon, label: string) => {
     const active = path === href;

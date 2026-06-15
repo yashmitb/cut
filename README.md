@@ -102,6 +102,39 @@ Open http://localhost:3000 — you'll be taken through onboarding first.
 
 Since it's just for you, there's no auth — all data lives under a single user.
 
+## Authentication & multi-user sync (Supabase)
+
+Sign-in is powered by Supabase Auth. When `NEXT_PUBLIC_SUPABASE_URL` and
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` are set, the app requires sign-in and
+scopes every row to the logged-in user's id, so you can log in from any device
+and see the same data. If those vars are **absent** (e.g. pure local dev), the
+app runs in single-user mode with no login.
+
+**Two sign-in methods are built in:**
+
+- **Email magic link** — works out of the box, no provider setup.
+- **Continue with Google** — needs Google enabled in Supabase (steps below).
+
+### Enable Google OAuth (one-time)
+
+1. **Supabase → Authentication → Sign In / Providers → Google → enable.**
+2. Create OAuth credentials in **Google Cloud Console → APIs & Services →
+   Credentials → OAuth client ID → Web application**.
+   - Authorized redirect URI: `https://<your-project>.supabase.co/auth/v1/callback`
+     (Supabase shows the exact URL on the Google provider page).
+3. Paste the **Client ID** and **Client secret** into Supabase → Save.
+4. **Supabase → Authentication → URL Configuration:**
+   - **Site URL**: your production URL (e.g. `https://cut-eta.vercel.app`).
+   - **Redirect URLs**: add `https://cut-eta.vercel.app/auth/callback` (and
+     `http://localhost:3000/auth/callback` for local testing).
+
+That's it — `/auth/callback` exchanges the code for a session, and the proxy
+keeps it refreshed. Sign out from **Profile → Sign out**.
+
+> Data security: queries go through the pooled Postgres connection and are
+> filtered by the **server-verified** user id (not anything the client sends),
+> so users only ever see their own rows.
+
 ## Switching the AI model
 
 Everything routes through env vars in `lib/gemini.ts`:

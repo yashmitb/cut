@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalysisResult, FoodItem } from "./types";
-import { ensureSchema, sql, USER_ID } from "./db";
+import { ensureSchema, sql } from "./db";
 
 export type KeySource = "saved" | "env" | "none";
 
@@ -13,7 +13,7 @@ export interface GeminiConfig {
 
 // Resolve the effective key + models: a key saved in the DB (set from Profile)
 // takes precedence, otherwise the GEMINI_API_KEY env var.
-async function resolveConfig(): Promise<GeminiConfig> {
+async function resolveConfig(userId: string): Promise<GeminiConfig> {
   let key = "";
   let source: KeySource = "none";
   let visionModel = process.env.GEMINI_MODEL || "gemini-2.5-pro";
@@ -21,7 +21,7 @@ async function resolveConfig(): Promise<GeminiConfig> {
   try {
     await ensureSchema();
     const rows = await sql<{ gemini_api_key: string | null; gemini_model: string | null }[]>`
-      SELECT gemini_api_key, gemini_model FROM app_settings WHERE id = ${USER_ID}`;
+      SELECT gemini_api_key, gemini_model FROM app_settings WHERE id = ${userId}`;
     const r = rows[0];
     if (r?.gemini_model) visionModel = r.gemini_model;
     if (r?.gemini_api_key) {
@@ -55,8 +55,8 @@ function maskKey(key: string): string {
 }
 
 /** Non-secret status for the Profile UI — never returns the full key. */
-export async function geminiStatus() {
-  const { key, visionModel, textModel, source } = await resolveConfig();
+export async function geminiStatus(userId: string) {
+  const { key, visionModel, textModel, source } = await resolveConfig(userId);
   return {
     hasKey: !!key,
     source,
@@ -67,8 +67,8 @@ export async function geminiStatus() {
 }
 
 /** Verify the linked key actually works by making a tiny call. */
-export async function testApiKey(): Promise<{ ok: boolean; model: string; error?: string }> {
-  const { key, visionModel } = await resolveConfig();
+export async function testApiKey(userId: string): Promise<{ ok: boolean; model: string; error?: string }> {
+  const { key, visionModel } = await resolveConfig(userId);
   if (!key) return { ok: false, model: visionModel, error: "No API key is linked." };
   try {
     await clientFor(key).models.generateContent({
@@ -224,12 +224,13 @@ function parseJSON(text: string): Record<string, unknown> {
 
 /** Analyze a food photo (base64, no data: prefix). */
 export async function analyzeImage(
+  userId: string,
   base64: string,
   mimeType: string,
   corrections: string[] = [],
   hint?: string
 ): Promise<AnalysisResult> {
-  const { key, visionModel } = await resolveConfig();
+  const { key, visionModel } = await resolveConfig(userId);
   const res = await clientFor(key).models.generateContent({
     model: visionModel,
     contents: [
@@ -267,12 +268,13 @@ export interface ChatTurn {
  * Always returns the FULL updated item list plus a conversational reply.
  */
 export async function converse(opts: {
+  userId: string;
   message: string;
   currentItems?: FoodItem[];
   history?: ChatTurn[];
   corrections?: string[];
 }): Promise<AnalysisResult> {
-  const { message, currentItems = [], history = [], corrections = [] } = opts;
+  const { userId, message, currentItems = [], history = [], corrections = [] } = opts;
 
   const context =
     currentItems.length > 0
@@ -284,7 +286,7 @@ export async function converse(opts: {
     { role: "user" as const, parts: [{ text: message + context }] },
   ];
 
-  const { key, textModel } = await resolveConfig();
+  const { key, textModel } = await resolveConfig(userId);
   const res = await clientFor(key).models.generateContent({
     model: textModel,
     contents,
@@ -310,15 +312,16 @@ export async function converse(opts: {
  * Returns short plain-text advice (2–4 concrete options).
  */
 export async function suggestMeal(opts: {
+  userId: string;
   remaining: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
   meal: string;
   recentFavorites?: string[];
 }): Promise<string> {
-  const { remaining, meal, recentFavorites = [] } = opts;
+  const { userId, remaining, meal, recentFavorites = [] } = opts;
   const favs = recentFavorites.length
     ? `\nThings they eat often: ${recentFavorites.slice(0, 10).join(", ")}.`
     : "";
-  const { key, textModel } = await resolveConfig();
+  const { key, textModel } = await resolveConfig(userId);
   const res = await clientFor(key).models.generateContent({
     model: textModel,
     contents: `The user is cutting and has these macros LEFT for the day:

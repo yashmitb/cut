@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureSchema, sql, USER_ID } from "@/lib/db";
+import { ensureSchema, sql } from "@/lib/db";
+import { getUserId, unauthorized } from "@/lib/supabase/auth";
 import { analyzeImage } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-async function recentCorrections(): Promise<string[]> {
+async function recentCorrections(userId: string): Promise<string[]> {
   const rows = await sql<{ note: string }[]>`
-    SELECT note FROM corrections WHERE user_id = ${USER_ID}
+    SELECT note FROM corrections WHERE user_id = ${userId}
     ORDER BY created_at DESC LIMIT 15`;
   return rows.map((r) => r.note);
 }
@@ -16,6 +17,8 @@ async function recentCorrections(): Promise<string[]> {
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
+    const userId = await getUserId();
+    if (!userId) return unauthorized();
     const b = await req.json();
     let image: string = b.image || "";
     const hint: string | undefined = b.hint;
@@ -29,8 +32,8 @@ export async function POST(req: NextRequest) {
       image = m[2];
     }
 
-    const corrections = await recentCorrections();
-    const result = await analyzeImage(image, mimeType, corrections, hint);
+    const corrections = await recentCorrections(userId);
+    const result = await analyzeImage(userId, image, mimeType, corrections, hint);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
