@@ -13,6 +13,7 @@ import {
   PlusIcon,
   SparkIcon,
   WaterIcon,
+  MEAL_ICONS,
 } from "@/components/Icons";
 import { api } from "@/lib/api";
 import { sumTotals, relativeDay } from "@/lib/format";
@@ -124,7 +125,7 @@ export default function TodayPage() {
       </header>
 
       {/* Ring */}
-      <section className="glass card flex flex-col items-center py-7 mb-4 rise rise-1">
+      <section className="glass card flex flex-col items-center py-7 mb-4 pop">
         <CalorieRing consumed={t.calories} target={profile.target_calories} />
         <div className="grid grid-cols-3 gap-2 w-full px-5 mt-6">
           <MiniStat label="Eaten" value={Math.round(t.calories)} />
@@ -144,8 +145,8 @@ export default function TodayPage() {
       {/* AI coach suggestion */}
       <button
         onClick={() => setSheetOpen(true)}
-        className="glass card w-full p-3.5 mb-3 flex items-center gap-3 rise rise-2 pressable"
-        style={{ background: "linear-gradient(120deg, rgba(201,184,240,0.10), rgba(168,208,240,0.05))" }}
+        className="glass card w-full p-3.5 mb-3 flex items-center gap-3 rise rise-2 pressable drift"
+        style={{ backgroundImage: "linear-gradient(120deg, rgba(201,184,240,0.12), rgba(168,208,240,0.05), rgba(201,184,240,0.12))" }}
       >
         <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(201,184,240,0.18)", color: "var(--p-cal)" }}>
           <SparkIcon width={18} height={18} />
@@ -192,13 +193,14 @@ export default function TodayPage() {
           </Link>
         ) : (
           <div className="flex flex-col gap-4">
-            {grouped.map(({ meal, rows }) => {
+            {grouped.map(({ meal, rows }, gi) => {
               const mt = sumTotals(rows);
+              const MealIcon = MEAL_ICONS[meal];
               return (
-                <div key={meal}>
+                <div key={meal} className="rise" style={{ animationDelay: `${0.05 * gi}s` }}>
                   <div className="flex items-center justify-between mb-1.5 px-1">
                     <p className="text-sm font-semibold flex items-center gap-1.5">
-                      <span>{MEAL_META[meal].icon}</span> {MEAL_META[meal].label}
+                      <MealIcon width={15} height={15} className="text-[var(--muted)]" /> {MEAL_META[meal].label}
                     </p>
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-[var(--muted)] tabular">{Math.round(mt.calories)} kcal</span>
@@ -258,10 +260,9 @@ function SuggestSheet({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }} />
+      <div className="absolute inset-0 fade-in" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }} />
       <div
-        className="glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)]"
-        style={{ animation: "rise 0.3s cubic-bezier(0.2,0.8,0.2,1) both" }}
+        className="glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)] sheet-up"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: "rgba(255,255,255,0.2)" }} />

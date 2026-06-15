@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { api } from "@/lib/api";
 import { displayWeight, shortDate } from "@/lib/format";
+import { Flame, Sprout } from "@/components/Icons";
 import type { Profile, Units } from "@/lib/types";
 import type { DayRow } from "@/app/api/progress/route";
 
@@ -96,8 +97,10 @@ export default function ProgressPage() {
       </header>
 
       {/* streak banner */}
-      <div className="glass card p-4 mb-3 flex items-center gap-3" style={{ background: "linear-gradient(120deg, rgba(247,197,159,0.12), rgba(246,166,184,0.05))" }}>
-        <span className="text-3xl">{stats.streak > 0 ? "🔥" : "🌱"}</span>
+      <div className="glass card p-4 mb-3 flex items-center gap-3.5" style={{ background: "linear-gradient(120deg, rgba(247,197,159,0.12), rgba(246,166,184,0.05))" }}>
+        <span className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${stats.streak > 0 ? "halo" : ""}`} style={{ background: stats.streak > 0 ? "rgba(247,197,159,0.16)" : "rgba(181,232,201,0.14)", color: stats.streak > 0 ? "var(--p-warn)" : "var(--p-fiber)" }}>
+          {stats.streak > 0 ? <Flame width={22} height={22} /> : <Sprout width={22} height={22} />}
+        </span>
         <div>
           <p className="text-2xl font-bold tabular leading-none">{stats.streak} day{stats.streak === 1 ? "" : "s"}</p>
           <p className="text-xs text-[var(--muted)] mt-1">{stats.streak > 0 ? "logging streak — keep it going" : "log a meal to start your streak"}</p>

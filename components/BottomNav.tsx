@@ -15,10 +15,25 @@ export default function BottomNav() {
       <Link
         href={href}
         className="flex flex-col items-center justify-center gap-1 py-1 px-3 pressable"
-        style={{ color: active ? "var(--fg)" : "var(--faint)" }}
+        style={{ color: active ? "var(--fg)" : "var(--faint)", transition: "color 0.25s ease" }}
       >
-        <Icon width={24} height={24} strokeWidth={active ? 2.1 : 1.7} />
+        <Icon
+          width={24}
+          height={24}
+          strokeWidth={active ? 2.1 : 1.7}
+          style={{ transform: active ? "translateY(-1px)" : "none", transition: "transform 0.25s cubic-bezier(0.16,1,0.3,1)" }}
+        />
         <span className="text-[10px] font-semibold tracking-wide">{label}</span>
+        <span
+          className="rounded-full"
+          style={{
+            width: active ? 5 : 0,
+            height: 5,
+            background: "var(--p-cal)",
+            boxShadow: active ? "0 0 6px var(--p-cal)" : "none",
+            transition: "width 0.28s cubic-bezier(0.16,1,0.3,1)",
+          }}
+        />
       </Link>
     );
   };

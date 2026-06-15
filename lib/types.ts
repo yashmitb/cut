@@ -30,11 +30,11 @@ export type FoodSource = "image" | "manual" | "chat" | "quick";
 
 export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
-export const MEAL_META: Record<MealType, { label: string; icon: string }> = {
-  breakfast: { label: "Breakfast", icon: "☀️" },
-  lunch: { label: "Lunch", icon: "🥗" },
-  dinner: { label: "Dinner", icon: "🍽️" },
-  snack: { label: "Snacks", icon: "🍎" },
+export const MEAL_META: Record<MealType, { label: string }> = {
+  breakfast: { label: "Breakfast" },
+  lunch: { label: "Lunch" },
+  dinner: { label: "Dinner" },
+  snack: { label: "Snacks" },
 };
 
 export const MEAL_ORDER: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
