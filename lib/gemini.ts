@@ -41,11 +41,120 @@ async function resolveConfig(userId: string): Promise<GeminiConfig> {
 
 function clientFor(key: string): GoogleGenAI {
   if (!key) {
-    throw new Error(
+    const e = new Error(
       "No Gemini API key is linked. Open Profile → AI connection and paste your key from https://aistudio.google.com/apikey."
     );
+    (e as ErrorWithCode).code = "NO_KEY";
+    throw e;
   }
   return new GoogleGenAI({ apiKey: key });
+}
+
+interface ErrorWithCode extends Error {
+  code?: string;
+}
+
+/** All AI is "busy / out of free quota" once every model in the chain is exhausted. */
+export class RateLimitedError extends Error {
+  code = "RATE_LIMIT";
+  constructor() {
+    super("The AI hit its free daily limit. Give it a little while and try again.");
+    this.name = "RateLimitedError";
+  }
+}
+
+// Free-tier fallback chain (all accept image input). Ordered by quality, but the
+// key insight from the rate-limit dashboard: 2.5-flash / 2.5-flash-lite only get
+// ~20 requests/day, while 3.1-flash-lite gets ~500/day — so it's the workhorse
+// fallback when the daily caps on the nicer models run out. Unknown model ids are
+// skipped automatically, so listing newer ones is safe.
+const FALLBACK_MODELS = [
+  "gemini-2.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-2.5-flash",
+];
+
+function modelChain(primary: string): string[] {
+  return [...new Set([primary, ...FALLBACK_MODELS])];
+}
+
+type ErrKind = "rate" | "badmodel" | "fatal" | "transient";
+
+function classify(e: unknown): ErrKind {
+  const err = e as { message?: string; status?: number; code?: number | string } | undefined;
+  const msg = String(err?.message ?? e ?? "").toLowerCase();
+  const status = typeof err?.status === "number" ? err.status : typeof err?.code === "number" ? err.code : 0;
+  if (
+    status === 429 ||
+    msg.includes("resource_exhausted") ||
+    msg.includes("quota") ||
+    msg.includes("rate limit") ||
+    msg.includes("rate-limit") ||
+    msg.includes("exceeded")
+  )
+    return "rate";
+  if (
+    msg.includes("api key not valid") ||
+    msg.includes("api_key_invalid") ||
+    msg.includes("permission_denied") ||
+    status === 401 ||
+    status === 403
+  )
+    return "fatal";
+  if (
+    msg.includes("not found") ||
+    msg.includes("is not supported") ||
+    msg.includes("does not exist") ||
+    msg.includes("unknown model") ||
+    (msg.includes("invalid") && msg.includes("model"))
+  )
+    return "badmodel";
+  return "transient";
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Run `fn` across the model chain with the user's policy:
+ *  - rate limit on a model → switch to the next model immediately
+ *  - other transient error → retry the same model up to 2 more times, then switch
+ *  - bad/unknown model → skip it
+ *  - bad key → surface immediately
+ *  - everything exhausted → RateLimitedError (clean "try later")
+ */
+async function runWithModels<T>(primary: string, fn: (model: string) => Promise<T>): Promise<T> {
+  const models = modelChain(primary);
+  let last: unknown;
+  for (const model of models) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await fn(model);
+      } catch (e) {
+        last = e;
+        const kind = classify(e);
+        console.warn(`[gemini] "${model}" failed (${kind}, try ${attempt + 1})`);
+        if (kind === "fatal") throw e;
+        if (kind === "rate" || kind === "badmodel") break; // next model
+        if (attempt < 2) {
+          await sleep(500 * (attempt + 1));
+          continue; // retry same model
+        }
+        break; // give up on this model
+      }
+    }
+  }
+  console.warn("[gemini] all fallback models exhausted", last);
+  throw new RateLimitedError();
+}
+
+/** Turn any AI error into a clean HTTP payload (status + code the client uses). */
+export function aiErrorPayload(e: unknown): { status: number; body: { error: string; code?: string } } {
+  const code = (e as ErrorWithCode)?.code;
+  const message = (e as Error)?.message || "Something went wrong.";
+  if (code === "RATE_LIMIT") return { status: 429, body: { error: message, code } };
+  if (code === "NO_KEY") return { status: 400, body: { error: message, code } };
+  return { status: 500, body: { error: cleanGeminiError(message) } };
 }
 
 function maskKey(key: string): string {
@@ -231,28 +340,30 @@ export async function analyzeImage(
   hint?: string
 ): Promise<AnalysisResult> {
   const { key, visionModel } = await resolveConfig(userId);
-  const res = await clientFor(key).models.generateContent({
-    model: visionModel,
-    contents: [
-      {
-        role: "user",
-        parts: [
-          {
-            text: hint
-              ? `Analyze this meal. Extra context from the user: "${hint}". Return the structured nutrition breakdown.`
-              : "Analyze this meal photo and return the structured nutrition breakdown.",
-          },
-          { inlineData: { mimeType, data: base64 } },
-        ],
+  const res = await runWithModels(visionModel, (model) =>
+    clientFor(key).models.generateContent({
+      model,
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: hint
+                ? `Analyze this meal. Extra context from the user: "${hint}". Return the structured nutrition breakdown.`
+                : "Analyze this meal photo and return the structured nutrition breakdown.",
+            },
+            { inlineData: { mimeType, data: base64 } },
+          ],
+        },
+      ],
+      config: {
+        systemInstruction: systemPrompt(corrections),
+        responseMimeType: "application/json",
+        responseSchema: analysisSchema,
+        temperature: 0.4,
       },
-    ],
-    config: {
-      systemInstruction: systemPrompt(corrections),
-      responseMimeType: "application/json",
-      responseSchema: analysisSchema,
-      temperature: 0.4,
-    },
-  });
+    })
+  );
   return coerceResult(parseJSON(res.text ?? "{}"));
 }
 
@@ -287,18 +398,20 @@ export async function converse(opts: {
   ];
 
   const { key, textModel } = await resolveConfig(userId);
-  const res = await clientFor(key).models.generateContent({
-    model: textModel,
-    contents,
-    config: {
-      systemInstruction:
-        systemPrompt(corrections) +
-        `\n\nYou are now in conversation. Put a short, warm conversational answer in "reply" (e.g. "Got it — updated the rice to 1 cup."). Always return the full item list in "items".`,
-      responseMimeType: "application/json",
-      responseSchema: analysisSchema,
-      temperature: 0.4,
-    },
-  });
+  const res = await runWithModels(textModel, (model) =>
+    clientFor(key).models.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction:
+          systemPrompt(corrections) +
+          `\n\nYou are now in conversation. Put a short, warm conversational answer in "reply" (e.g. "Got it — updated the rice to 1 cup."). Always return the full item list in "items".`,
+        responseMimeType: "application/json",
+        responseSchema: analysisSchema,
+        temperature: 0.4,
+      },
+    })
+  );
 
   const parsed = parseJSON(res.text ?? "{}");
   const result = coerceResult(parsed);
@@ -344,10 +457,10 @@ export async function suggestMeal(opts: {
     : `No specific craving — pick something they'd likely enjoy for ${meal}.`;
 
   const { key, textModel } = await resolveConfig(userId);
-  const isFlash = textModel.includes("flash");
-  const res = await clientFor(key).models.generateContent({
-    model: textModel,
-    contents: `The user is cutting and has these macros LEFT for today:
+  const res = await runWithModels(textModel, (model) =>
+    clientFor(key).models.generateContent({
+      model,
+      contents: `The user is cutting and has these macros LEFT for today:
 - ${remaining.calories} kcal
 - ${remaining.protein} g protein
 - ${remaining.carbs} g carbs
@@ -356,16 +469,17 @@ export async function suggestMeal(opts: {
 It's around ${meal} time. ${wants}${favs}
 
 Suggest ONE specific dish that fits what's left, prioritising hitting the PROTEIN target without exceeding the remaining calories (a little under is fine). Give a real, cookable recipe: realistic ingredients with amounts, and short prep steps. Fill in the macro fields with the totals for the whole recipe as you describe it. If almost no calories remain, suggest something light and high-volume.`,
-    config: {
-      systemInstruction:
-        "You are a sports dietitian and recipe writer helping someone on a cut. Recipes must be realistic, simple, and high-protein. Return only the structured fields.",
-      responseMimeType: "application/json",
-      responseSchema: suggestionSchema,
-      temperature: 0.8,
-      maxOutputTokens: 2048,
-      ...(isFlash ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-    },
-  });
+      config: {
+        systemInstruction:
+          "You are a sports dietitian and recipe writer helping someone on a cut. Recipes must be realistic, simple, and high-protein. Return only the structured fields.",
+        responseMimeType: "application/json",
+        responseSchema: suggestionSchema,
+        temperature: 0.8,
+        maxOutputTokens: 2048,
+        ...(model.includes("flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+      },
+    })
+  );
 
   const p = parseJSON(res.text ?? "{}");
   const n = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.round(v)) : 0);

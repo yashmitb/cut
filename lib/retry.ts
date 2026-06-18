@@ -4,9 +4,11 @@
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.status = status;
+    this.code = code;
     this.name = "ApiError";
   }
 }
@@ -84,8 +86,11 @@ function countdown(label: string, secs: number): Promise<void> {
 /** Whether a thrown error is worth retrying (transient). */
 export function isTransient(e: unknown): boolean {
   if (e instanceof ApiError) {
-    // 429 (rate limit) and 5xx (server / upstream AI errors) are transient.
-    // 4xx (bad request, auth, not found) are not — surface those.
+    // The server already exhausted every AI model (RATE_LIMIT) or needs a key
+    // (NO_KEY) — retrying client-side won't help, so surface those cleanly.
+    if (e.code === "RATE_LIMIT" || e.code === "NO_KEY") return false;
+    // 429 (rate limit) and 5xx (server / upstream errors) are transient.
+    // Other 4xx (bad request, auth, not found) are not — surface those.
     return e.status === 429 || e.status === 408 || e.status >= 500;
   }
   // network failures (fetch throws TypeError) — retry

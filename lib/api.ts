@@ -19,7 +19,8 @@ function call<T>(label: string, path: string, init?: RequestInit): Promise<T> {
     }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      throw new ApiError((data as { error?: string }).error || `Request failed (${res.status})`, res.status);
+      const d = data as { error?: string; code?: string };
+      throw new ApiError(d.error || `Request failed (${res.status})`, res.status, d.code);
     }
     return data as T;
   }, label);

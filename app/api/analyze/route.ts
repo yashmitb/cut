@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
-import { analyzeImage } from "@/lib/gemini";
+import { analyzeImage, aiErrorPayload } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +36,7 @@ export async function POST(req: NextRequest) {
     const result = await analyzeImage(userId, image, mimeType, corrections, hint);
     return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const { status, body } = aiErrorPayload(e);
+    return NextResponse.json(body, { status });
   }
 }

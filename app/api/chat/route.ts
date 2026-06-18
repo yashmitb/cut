@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
-import { converse, type ChatTurn } from "@/lib/gemini";
+import { converse, aiErrorPayload, type ChatTurn } from "@/lib/gemini";
 import type { FoodItem } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(result);
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    const { status, body } = aiErrorPayload(e);
+    return NextResponse.json(body, { status });
   }
 }
