@@ -1,6 +1,21 @@
 import type { FoodItem, FoodLog, DayTotals, Units } from "./types";
 import { cmToIn, kgToLb } from "./nutrition";
 
+/** Pull a leading number (incl. simple fractions like "1/2") off a quantity string. */
+export function parseLeadingNumber(s: string): { num: number | null; unit: string } {
+  const m = (s || "").trim().match(/^(\d+(?:\.\d+)?)(?:\s*\/\s*(\d+(?:\.\d+)?))?\s*(.*)$/);
+  if (!m) return { num: null, unit: (s || "").trim() };
+  const a = parseFloat(m[1]);
+  const b = m[2] ? parseFloat(m[2]) : null;
+  const num = b ? a / b : a;
+  return { num: isFinite(num) ? num : null, unit: m[3] || "" };
+}
+
+/** Trim trailing zeros for display, e.g. 2 → "2", 1.5 → "1.5". */
+export function formatAmount(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100);
+}
+
 export function sumTotals(items: Pick<FoodLog, keyof DayTotals>[] | FoodItem[]): DayTotals {
   return items.reduce<DayTotals>(
     (a, i) => ({
