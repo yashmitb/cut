@@ -339,25 +339,31 @@ function SuggestSheet({
         <div className="overflow-y-auto -mx-1 px-1">
           {phase === "ask" && (
             <div className="rise">
-              <p className="text-sm text-[var(--muted)] mb-3">What are you in the mood for? I&apos;ll build a recipe that fits what&apos;s left.</p>
-              <input
-                className="field mb-3"
-                autoFocus
-                placeholder="e.g. something with chicken, Asian, a smoothie…"
-                value={craving}
-                onChange={(e) => setCraving(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && craving.trim() && ask(craving)}
-              />
-              <div className="flex flex-wrap gap-2 mb-4">
+              <p className="text-sm text-[var(--muted)] mb-3">What are you in the mood for? Tap one and I&apos;ll build a recipe that fits what&apos;s left.</p>
+              <div className="flex flex-wrap gap-2">
                 {CRAVINGS.map((c) => (
-                  <button key={c} onClick={() => { setCraving(c === "Surprise me" ? "" : c); ask(c); }} className="chip pressable !py-1.5 !px-3" style={{ color: "var(--fg)" }}>
+                  <button key={c} onClick={() => { setCraving(c === "Surprise me" ? "" : c); ask(c); }} className="chip pressable !py-2 !px-3.5" style={{ color: "var(--fg)" }}>
                     {c}
                   </button>
                 ))}
               </div>
-              <button onClick={() => ask(craving)} disabled={!craving.trim()} className="btn btn-primary w-full">
-                <SparkIcon width={18} height={18} /> Get a recipe
-              </button>
+              <div className="flex items-center gap-3 my-4">
+                <div className="flex-1 h-px" style={{ background: "var(--line)" }} />
+                <span className="text-[11px] text-[var(--faint)] uppercase tracking-wider">or type your own</span>
+                <div className="flex-1 h-px" style={{ background: "var(--line)" }} />
+              </div>
+              <div className="flex gap-2">
+                <input
+                  className="field"
+                  placeholder="e.g. something with chicken…"
+                  value={craving}
+                  onChange={(e) => setCraving(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && craving.trim() && ask(craving)}
+                />
+                <button onClick={() => ask(craving)} disabled={!craving.trim()} className="btn btn-primary !px-4 flex-shrink-0" aria-label="Get a recipe">
+                  <SparkIcon width={18} height={18} />
+                </button>
+              </div>
               {error && <p className="text-sm mt-3" style={{ color: "var(--p-warn)" }}>{error}</p>}
             </div>
           )}
