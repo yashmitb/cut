@@ -22,6 +22,10 @@ import {
   Apple,
   Flame,
   Sprout,
+  Layers,
+  ChevronDown,
+  Search,
+  BookOpen,
   type LucideIcon,
 } from "lucide-react";
 import type { MealType } from "@/lib/types";
@@ -42,7 +46,7 @@ export const ChevronRight = LChevronRight;
 export const PencilIcon = Pencil;
 export const ImageIcon = LImage;
 export const ScaleIcon = Scale;
-export { Flame, Sprout };
+export { Flame, Sprout, Layers, ChevronDown, Search, BookOpen };
 
 export const MEAL_ICONS: Record<MealType, LucideIcon> = {
   breakfast: Sunrise,

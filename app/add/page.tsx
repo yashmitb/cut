@@ -13,6 +13,7 @@ import {
   CheckIcon,
   ChevronLeft,
   ImageIcon,
+  Layers,
   PlusIcon,
   SendIcon,
   SparkIcon,
@@ -52,9 +53,14 @@ function AddInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [recent, setRecent] = useState<FoodItem[]>([]);
+  const [recent, setRecent] = useState<(FoodItem & { count?: number })[]>([]);
   const [quickAdded, setQuickAdded] = useState(0);
   const [justAdded, setJustAdded] = useState<number | null>(null);
+  const [addedCounts, setAddedCounts] = useState<Record<number, number>>({});
+  const [showAllRecent, setShowAllRecent] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [groupOn, setGroupOn] = useState(false);
+  const [groupName, setGroupName] = useState("");
 
   const cameraRef = useRef<HTMLInputElement>(null);
   const uploadRef = useRef<HTMLInputElement>(null);
@@ -67,6 +73,12 @@ function AddInner() {
   useEffect(() => {
     api.getRecent().then(({ items }) => setRecent(items)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 1800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   async function handleFile(file: File) {
     setError(null);
@@ -112,8 +124,10 @@ function AddInner() {
     try {
       await api.addItems(date, [item], "quick", meal);
       setQuickAdded((n) => n + 1);
+      setAddedCounts((m) => ({ ...m, [idx]: (m[idx] || 0) + 1 }));
       setJustAdded(idx);
-      setTimeout(() => setJustAdded((c) => (c === idx ? null : c)), 1000);
+      setToast(`Added ${item.name} → ${MEAL_META[meal].label}`);
+      setTimeout(() => setJustAdded((c) => (c === idx ? null : c)), 1100);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -150,7 +164,11 @@ function AddInner() {
     if (!items.length || busy) return;
     setBusy(true);
     try {
-      await api.addItems(date, items, source, meal);
+      const group =
+        groupOn && items.length > 1
+          ? { group_id: crypto.randomUUID(), group_label: groupName.trim() || items[0].name }
+          : undefined;
+      await api.addItems(date, items, source, meal, group);
       router.replace("/");
     } catch (e) {
       setError((e as Error).message);
@@ -187,6 +205,12 @@ function AddInner() {
         ))}
       </div>
 
+      {toast && (
+        <div className="fixed top-[max(env(safe-area-inset-top),12px)] left-1/2 -translate-x-1/2 z-[70] glass-strong rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2 pop" style={{ color: "var(--p-fiber)" }}>
+          <CheckIcon width={15} height={15} /> {toast}
+        </div>
+      )}
+
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
       <input ref={uploadRef} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
 
@@ -202,20 +226,38 @@ function AddInner() {
         <div className="flex-1 flex flex-col gap-4 pb-8 rise">
           {recent.length > 0 && (
             <div>
-              <p className="text-xs text-[var(--faint)] uppercase tracking-wider mb-2 px-1">Quick add · no AI</p>
-              <div className="flex flex-wrap gap-2">
-                {recent.map((it, i) => (
-                  <button
-                    key={i}
-                    onClick={() => quickAdd(it, i)}
-                    className="chip pressable !py-1.5 !px-3"
-                    style={justAdded === i ? { color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.4)", background: "rgba(181,232,201,0.1)" } : { color: "var(--fg)" }}
-                  >
-                    {justAdded === i ? <CheckIcon width={12} height={12} /> : <PlusIcon width={12} height={12} />}
-                    <span className="max-w-[140px] truncate">{it.name}</span>
-                    <span className="text-[var(--faint)] tabular">{Math.round(it.calories)}</span>
+              <div className="flex items-center justify-between mb-2 px-1">
+                <p className="text-xs text-[var(--faint)] uppercase tracking-wider">Quick add · tap to log instantly</p>
+                {recent.length > 8 && (
+                  <button onClick={() => setShowAllRecent((s) => !s)} className="text-[11px] text-[var(--muted)] pressable">
+                    {showAllRecent ? "Show less" : `+${recent.length - 8} more`}
                   </button>
-                ))}
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {(showAllRecent ? recent : recent.slice(0, 8)).map((it, i) => {
+                  const cnt = addedCounts[i] || 0;
+                  const flash = justAdded === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => quickAdd(it, i)}
+                      className="chip pressable !py-1.5 !px-3 transition-transform"
+                      style={
+                        flash
+                          ? { color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.5)", background: "rgba(181,232,201,0.16)", transform: "scale(1.05)" }
+                          : cnt > 0
+                            ? { color: "var(--fg)", borderColor: "rgba(181,232,201,0.35)" }
+                            : { color: "var(--fg)" }
+                      }
+                    >
+                      {flash || cnt > 0 ? <CheckIcon width={12} height={12} style={{ color: "var(--p-fiber)" }} /> : <PlusIcon width={12} height={12} />}
+                      <span className="max-w-[150px] truncate">{flash ? "Added!" : it.name}</span>
+                      {!flash && <span className="text-[var(--faint)] tabular">{Math.round(it.calories)}</span>}
+                      {cnt > 0 && !flash && <span className="text-[10px] font-bold" style={{ color: "var(--p-fiber)" }}>×{cnt}</span>}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -292,6 +334,27 @@ function AddInner() {
             ))}
             {items.length === 0 && <p className="text-center text-[var(--muted)] text-sm py-6">No items — describe your meal below.</p>}
           </div>
+
+          {/* combine into one group */}
+          {items.length > 1 && (
+            <div className="glass card p-3.5 mb-3">
+              <button onClick={() => setGroupOn((g) => !g)} className="w-full flex items-center gap-3 pressable">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(201,184,240,0.16)", color: "var(--p-cal)" }}>
+                  <Layers width={16} height={16} />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-semibold">Combine into one item</p>
+                  <p className="text-xs text-[var(--muted)]">Group these {items.length} as one collapsible entry (e.g. a drink mix)</p>
+                </div>
+                <span className="relative w-10 h-6 rounded-full flex-shrink-0 transition-colors" style={{ background: groupOn ? "var(--p-cal)" : "rgba(255,255,255,0.12)" }}>
+                  <span className="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all" style={{ left: groupOn ? "18px" : "2px" }} />
+                </span>
+              </button>
+              {groupOn && (
+                <input className="field mt-3 !py-2 !text-sm" placeholder={items[0]?.name || "Group name"} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
+              )}
+            </div>
+          )}
 
           <div className="glass card p-4 mb-3">
             <div className="flex items-center gap-2 mb-3">

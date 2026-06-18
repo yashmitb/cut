@@ -94,6 +94,8 @@ export function ensureSchema(): Promise<void> {
           created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
         )`;
       await sql`ALTER TABLE food_logs ADD COLUMN IF NOT EXISTS meal TEXT NOT NULL DEFAULT 'snack'`;
+      await sql`ALTER TABLE food_logs ADD COLUMN IF NOT EXISTS group_id TEXT`;
+      await sql`ALTER TABLE food_logs ADD COLUMN IF NOT EXISTS group_label TEXT`;
       await sql`CREATE INDEX IF NOT EXISTS food_logs_date_idx ON food_logs (user_id, log_date)`;
       await sql`
         CREATE TABLE IF NOT EXISTS weight_logs (

@@ -6,11 +6,15 @@ import Link from "next/link";
 import CalorieRing from "@/components/CalorieRing";
 import MacroBar from "@/components/MacroBar";
 import LogItem from "@/components/LogItem";
+import LogGroup from "@/components/LogGroup";
 import {
+  BookOpen,
   CameraIcon,
+  CheckIcon,
   ChevronLeft,
   ChevronRight,
   PlusIcon,
+  Search,
   SparkIcon,
   WaterIcon,
   MEAL_ICONS,
@@ -19,7 +23,7 @@ import { api } from "@/lib/api";
 import { sumTotals, relativeDay } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
-import type { FoodLog, MealType, Profile } from "@/lib/types";
+import type { FoodLog, MealSuggestion, MealType, Profile } from "@/lib/types";
 
 const GLASS_ML = 250;
 
@@ -27,6 +31,30 @@ function shiftDate(date: string, delta: number): string {
   const d = new Date(date + "T00:00:00");
   d.setDate(d.getDate() + delta);
   return d.toISOString().slice(0, 10);
+}
+
+type Block =
+  | { type: "single"; item: FoodLog }
+  | { type: "group"; id: string; label: string; items: FoodLog[] };
+
+// Collapse items sharing a group_id into one block, preserving order.
+function buildBlocks(rows: FoodLog[]): Block[] {
+  const blocks: Block[] = [];
+  const idx = new Map<string, number>();
+  for (const it of rows) {
+    if (it.group_id) {
+      const at = idx.get(it.group_id);
+      if (at === undefined) {
+        idx.set(it.group_id, blocks.length);
+        blocks.push({ type: "group", id: it.group_id, label: it.group_label || "Group", items: [it] });
+      } else {
+        (blocks[at] as { type: "group"; items: FoodLog[] }).items.push(it);
+      }
+    } else {
+      blocks.push({ type: "single", item: it });
+    }
+  }
+  return blocks;
 }
 
 export default function TodayPage() {
@@ -210,9 +238,13 @@ export default function TodayPage() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-2">
-                    {rows.map((it) => (
-                      <LogItem key={it.id} item={it} date={date} onChanged={setItems} />
-                    ))}
+                    {buildBlocks(rows).map((blk) =>
+                      blk.type === "group" ? (
+                        <LogGroup key={blk.id} id={blk.id} label={blk.label} items={blk.items} date={date} meal={meal} onChanged={setItems} />
+                      ) : (
+                        <LogItem key={blk.item.id} item={blk.item} date={date} onChanged={setItems} />
+                      )
+                    )}
                   </div>
                 </div>
               );
@@ -224,6 +256,8 @@ export default function TodayPage() {
       {sheetOpen && (
         <SuggestSheet
           remaining={remaining}
+          date={date}
+          onLogged={() => loadDay(date)}
           onClose={() => setSheetOpen(false)}
         />
       )}
@@ -231,62 +265,172 @@ export default function TodayPage() {
   );
 }
 
+const CRAVINGS = ["High protein", "Something sweet", "Quick & easy", "Low calorie", "Comfort food", "Surprise me"];
+
 function SuggestSheet({
   remaining,
+  date,
+  onLogged,
   onClose,
 }: {
   remaining: ReturnType<typeof sumTotals>;
+  date: string;
+  onLogged: () => void;
   onClose: () => void;
 }) {
-  const [loading, setLoading] = useState(true);
-  const [text, setText] = useState("");
+  const [phase, setPhase] = useState<"ask" | "loading" | "result">("ask");
+  const [craving, setCraving] = useState("");
+  const [suggestion, setSuggestion] = useState<MealSuggestion | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [logged, setLogged] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const meal = MEAL_META[mealNow()].label.toLowerCase();
-        const { text } = await api.suggest(remaining, mealNow());
-        setText(text);
-        void meal;
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  async function ask(c: string) {
+    setError(null);
+    setPhase("loading");
+    try {
+      const { suggestion } = await api.suggest(remaining, mealNow(), c === "Surprise me" ? "" : c);
+      setSuggestion(suggestion);
+      setPhase("result");
+    } catch (e) {
+      setError((e as Error).message);
+      setPhase("ask");
+    }
+  }
+
+  async function logIt() {
+    if (!suggestion) return;
+    try {
+      await api.addItems(
+        date,
+        [{ name: suggestion.dish, quantity: "1 serving", calories: suggestion.calories, protein: suggestion.protein, carbs: suggestion.carbs, fat: suggestion.fat, fiber: suggestion.fiber, sugar: 0, sodium: 0, confidence: 0.8 }],
+        "manual",
+        mealNow()
+      );
+      setLogged(true);
+      onLogged();
+      setTimeout(onClose, 700);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 fade-in" style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(2px)" }} />
+      <div className="absolute inset-0 fade-in" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }} />
       <div
-        className="glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)] sheet-up"
+        className="glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)] sheet-up flex flex-col"
+        style={{ maxHeight: "88dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5" style={{ background: "rgba(255,255,255,0.2)" }} />
-        <div className="flex items-center gap-2 mb-4">
+        <div className="w-10 h-1 rounded-full mx-auto mb-5 flex-shrink-0" style={{ background: "rgba(255,255,255,0.2)" }} />
+        <div className="flex items-center gap-2 mb-3 flex-shrink-0">
           <span style={{ color: "var(--p-cal)" }}><SparkIcon width={20} height={20} /></span>
-          <h3 className="text-lg font-bold">Meal ideas for what's left</h3>
+          <h3 className="text-lg font-bold">What should I eat?</h3>
         </div>
-        <div className="flex gap-2 mb-4 flex-wrap">
-          <Pill label={`${Math.round(remaining.calories)} kcal`} c="var(--p-cal)" />
+        <div className="flex gap-1.5 mb-4 flex-wrap flex-shrink-0">
+          <Pill label={`${Math.round(remaining.calories)} kcal left`} c="var(--p-cal)" />
           <Pill label={`${Math.round(remaining.protein)}g protein`} c="var(--p-protein)" />
-          <Pill label={`${Math.round(remaining.carbs)}g carbs`} c="var(--p-carbs)" />
-          <Pill label={`${Math.round(remaining.fat)}g fat`} c="var(--p-fat)" />
         </div>
-        {loading ? (
-          <div className="flex items-center gap-3 py-8 justify-center text-[var(--muted)]">
-            <span className="spin w-5 h-5 rounded-full" style={{ border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "var(--p-cal)" }} />
-            Thinking up something good…
-          </div>
-        ) : error ? (
-          <p className="text-sm text-[var(--muted)] py-4">{error}</p>
-        ) : (
-          <p className="text-sm whitespace-pre-line leading-relaxed text-[var(--fg)]/90">{text}</p>
-        )}
-        <button onClick={onClose} className="btn btn-ghost w-full mt-5">Close</button>
+
+        <div className="overflow-y-auto -mx-1 px-1">
+          {phase === "ask" && (
+            <div className="rise">
+              <p className="text-sm text-[var(--muted)] mb-3">What are you in the mood for? I&apos;ll build a recipe that fits what&apos;s left.</p>
+              <input
+                className="field mb-3"
+                autoFocus
+                placeholder="e.g. something with chicken, Asian, a smoothie…"
+                value={craving}
+                onChange={(e) => setCraving(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && craving.trim() && ask(craving)}
+              />
+              <div className="flex flex-wrap gap-2 mb-4">
+                {CRAVINGS.map((c) => (
+                  <button key={c} onClick={() => { setCraving(c === "Surprise me" ? "" : c); ask(c); }} className="chip pressable !py-1.5 !px-3" style={{ color: "var(--fg)" }}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <button onClick={() => ask(craving)} disabled={!craving.trim()} className="btn btn-primary w-full">
+                <SparkIcon width={18} height={18} /> Get a recipe
+              </button>
+              {error && <p className="text-sm mt-3" style={{ color: "var(--p-warn)" }}>{error}</p>}
+            </div>
+          )}
+
+          {phase === "loading" && (
+            <div className="flex items-center gap-3 py-10 justify-center text-[var(--muted)]">
+              <span className="spin w-5 h-5 rounded-full" style={{ border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "var(--p-cal)" }} />
+              Cooking up an idea…
+            </div>
+          )}
+
+          {phase === "result" && suggestion && (
+            <div className="rise">
+              <h4 className="text-xl font-bold tracking-tight">{suggestion.dish}</h4>
+              {suggestion.blurb && <p className="text-sm text-[var(--muted)] mt-1 mb-3">{suggestion.blurb}</p>}
+              <div className="flex gap-1.5 flex-wrap mb-4">
+                <Pill label={`${suggestion.calories} kcal`} c="var(--p-cal)" />
+                <Pill label={`${suggestion.protein}g protein`} c="var(--p-protein)" />
+                <Pill label={`${suggestion.carbs}g carbs`} c="var(--p-carbs)" />
+                <Pill label={`${suggestion.fat}g fat`} c="var(--p-fat)" />
+              </div>
+
+              {suggestion.ingredients.length > 0 && (
+                <div className="mb-4">
+                  <p className="label !text-[11px] mb-2">Ingredients</p>
+                  <ul className="flex flex-col gap-1.5">
+                    {suggestion.ingredients.map((ing, i) => (
+                      <li key={i} className="text-sm flex gap-2">
+                        <span className="text-[var(--p-cal)]">•</span>
+                        <span>{ing}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {suggestion.steps.length > 0 && (
+                <div className="mb-4">
+                  <p className="label !text-[11px] mb-2">Steps</p>
+                  <ol className="flex flex-col gap-2">
+                    {suggestion.steps.map((s, i) => (
+                      <li key={i} className="text-sm flex gap-2.5">
+                        <span className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[11px] font-bold" style={{ background: "rgba(201,184,240,0.16)", color: "var(--p-cal)" }}>{i + 1}</span>
+                        <span className="pt-0.5">{s}</span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(suggestion.dish + " recipe")}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-ghost w-full mb-2"
+              >
+                <Search width={16} height={16} /> Find recipes online
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* footer actions */}
+        <div className="flex-shrink-0 pt-3">
+          {phase === "result" ? (
+            <div className="flex gap-2">
+              <button onClick={() => setPhase("ask")} className="btn btn-ghost flex-1">
+                <BookOpen width={16} height={16} /> Another
+              </button>
+              <button onClick={logIt} className="btn btn-primary flex-1" style={logged ? { background: "var(--p-fiber)" } : undefined}>
+                {logged ? <><CheckIcon width={16} height={16} /> Logged</> : <><PlusIcon width={16} height={16} /> Log it</>}
+              </button>
+            </div>
+          ) : (
+            <button onClick={onClose} className="btn btn-ghost w-full">Close</button>
+          )}
+        </div>
       </div>
     </div>
   );

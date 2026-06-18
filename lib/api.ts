@@ -1,5 +1,5 @@
 // Tiny client-side fetch helpers.
-import type { Profile, FoodLog, WeightLog, FoodItem, AnalysisResult, MealType, DayTotals } from "./types";
+import type { Profile, FoodLog, WeightLog, FoodItem, AnalysisResult, MealType, DayTotals, MealSuggestion } from "./types";
 
 const baseUrl = typeof window !== "undefined"
   ? ""
@@ -24,16 +24,31 @@ export const api = {
 
   getDay: (date: string) =>
     apiFetch(`/api/log?date=${date}`).then((r) => j<{ items: FoodLog[] }>(r)),
-  addItems: (date: string, items: FoodItem[], source: string, meal: MealType) =>
-    apiFetch("/api/log", { method: "POST", body: JSON.stringify({ date, items, source, meal }) }).then((r) =>
-      j<{ items: FoodLog[] }>(r)
-    ),
+  addItems: (
+    date: string,
+    items: FoodItem[],
+    source: string,
+    meal: MealType,
+    group?: { group_id: string; group_label: string }
+  ) =>
+    apiFetch("/api/log", {
+      method: "POST",
+      body: JSON.stringify({ date, items, source, meal, ...(group || {}) }),
+    }).then((r) => j<{ items: FoodLog[] }>(r)),
   editItem: (body: unknown) =>
     apiFetch("/api/log", { method: "PATCH", body: JSON.stringify(body) }).then((r) =>
       j<{ items: FoodLog[] }>(r)
     ),
+  moveGroup: (group_id: string, patch: { meal?: MealType; group_label?: string }) =>
+    apiFetch("/api/log", { method: "PATCH", body: JSON.stringify({ group_id, ...patch }) }).then((r) =>
+      j<{ items: FoodLog[] }>(r)
+    ),
   deleteItem: (id: number, date: string) =>
     apiFetch(`/api/log?id=${id}&date=${date}`, { method: "DELETE" }).then((r) =>
+      j<{ items: FoodLog[] }>(r)
+    ),
+  deleteGroup: (group_id: string, date: string) =>
+    apiFetch(`/api/log?group=${group_id}&date=${date}`, { method: "DELETE" }).then((r) =>
       j<{ items: FoodLog[] }>(r)
     ),
 
@@ -46,10 +61,11 @@ export const api = {
       (r) => j<AnalysisResult>(r)
     ),
 
-  getRecent: () => apiFetch("/api/recent").then((r) => j<{ items: FoodItem[] }>(r)),
-  suggest: (remaining: DayTotals, meal: MealType) =>
-    apiFetch("/api/suggest", { method: "POST", body: JSON.stringify({ ...remaining, meal }) }).then((r) =>
-      j<{ text: string }>(r)
+  getRecent: () =>
+    apiFetch("/api/recent").then((r) => j<{ items: (FoodItem & { count?: number })[] }>(r)),
+  suggest: (remaining: DayTotals, meal: MealType, craving: string) =>
+    apiFetch("/api/suggest", { method: "POST", body: JSON.stringify({ ...remaining, meal, craving }) }).then(
+      (r) => j<{ suggestion: MealSuggestion }>(r)
     ),
 
   getWater: (date: string) => apiFetch(`/api/water?date=${date}`).then((r) => j<{ ml: number }>(r)),

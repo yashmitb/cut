@@ -21,13 +21,14 @@ export async function POST(req: NextRequest) {
       fiber: Math.round(Number(b.fiber) || 0),
     };
     const meal: string = b.meal || "meal";
+    const craving: string = typeof b.craving === "string" ? b.craving.slice(0, 200) : "";
 
     const favs = await sql<{ name: string }[]>`
       SELECT name, COUNT(*) AS c FROM food_logs WHERE user_id = ${userId}
       GROUP BY name ORDER BY c DESC LIMIT 10`;
 
-    const text = await suggestMeal({ userId, remaining, meal, recentFavorites: favs.map((f) => f.name) });
-    return NextResponse.json({ text });
+    const suggestion = await suggestMeal({ userId, remaining, meal, craving, recentFavorites: favs.map((f) => f.name) });
+    return NextResponse.json({ suggestion });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

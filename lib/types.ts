@@ -66,7 +66,22 @@ export interface FoodLog extends FoodItem {
   log_date: string; // YYYY-MM-DD (user-local)
   meal: MealType;
   source: FoodSource;
+  group_id: string | null; // items sharing a group_id are one combined entry
+  group_label: string | null; // display name for the group (e.g. "Pre-workout shake")
   created_at: string;
+}
+
+/** A recipe-style suggestion from the "What should I eat?" coach. */
+export interface MealSuggestion {
+  dish: string;
+  blurb: string; // why it fits what's left
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  ingredients: string[];
+  steps: string[];
 }
 
 export interface WeightLog {

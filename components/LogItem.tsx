@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { api } from "@/lib/api";
 import { CheckIcon, PencilIcon, TrashIcon, WarnIcon } from "./Icons";
+import { MEAL_META, MEAL_ORDER } from "@/lib/types";
 import type { FoodLog } from "@/lib/types";
 
 export default function LogItem({
@@ -74,6 +75,14 @@ export default function LogItem({
           {num("carbs", "C", "var(--p-carbs)")}
           {num("fat", "F", "var(--p-fat)")}
           {num("fiber", "Fiber", "var(--p-fiber)")}
+        </div>
+        <p className="label !text-[10px] mb-1.5">Meal</p>
+        <div className="seg mb-3">
+          {MEAL_ORDER.map((m) => (
+            <div key={m} className="seg-item !text-[11px] !px-1 !py-1.5" data-on={draft.meal === m} onClick={() => setDraft((d) => ({ ...d, meal: m }))}>
+              {MEAL_META[m].label}
+            </div>
+          ))}
         </div>
         <div className="flex gap-2">
           <button onClick={() => { setDraft(item); setOpen(false); }} className="btn btn-ghost flex-1 !py-2.5">Cancel</button>

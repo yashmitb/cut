@@ -6,28 +6,28 @@ import type { FoodItem } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Distinct recently-logged foods for one-tap re-logging (no AI call).
+// One-tap re-logging (no AI). Collapses portion variants of the same food into a
+// single entry (most-recent version), ranked by how often it's eaten.
 export async function GET() {
   try {
     await ensureSchema();
     const userId = await getUserId();
     if (!userId) return unauthorized();
-    const rows = await sql<(FoodItem & { last: string })[]>`
-      SELECT DISTINCT ON (lower(name), quantity)
-             name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium,
-             1.0 AS confidence, created_at AS last
-      FROM food_logs
-      WHERE user_id = ${userId}
-      ORDER BY lower(name), quantity, created_at DESC`;
-    // sort by most-recent and cap
-    const sorted = rows
-      .sort((a, b) => new Date(b.last).getTime() - new Date(a.last).getTime())
-      .slice(0, 18)
-      .map(({ last, ...item }) => {
-        void last;
-        return item;
-      });
-    return NextResponse.json({ items: sorted });
+    const rows = await sql<(FoodItem & { count: number })[]>`
+      WITH ranked AS (
+        SELECT name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium, created_at,
+               COUNT(*)    OVER (PARTITION BY lower(name)) AS count,
+               ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY created_at DESC) AS rn
+        FROM food_logs
+        WHERE user_id = ${userId}
+      )
+      SELECT name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium,
+             1.0 AS confidence, count::int AS count
+      FROM ranked
+      WHERE rn = 1
+      ORDER BY count DESC, lower(name) ASC
+      LIMIT 20`;
+    return NextResponse.json({ items: rows });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

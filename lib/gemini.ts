@@ -311,34 +311,74 @@ export async function converse(opts: {
  * Suggest a meal that fits the user's remaining macros for the day.
  * Returns short plain-text advice (2–4 concrete options).
  */
+const suggestionSchema = {
+  type: Type.OBJECT,
+  properties: {
+    dish: { type: Type.STRING, description: "Name of the dish" },
+    blurb: { type: Type.STRING, description: "One short sentence on why it fits what's left + the craving" },
+    calories: { type: Type.NUMBER },
+    protein: { type: Type.NUMBER },
+    carbs: { type: Type.NUMBER },
+    fat: { type: Type.NUMBER },
+    fiber: { type: Type.NUMBER },
+    ingredients: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Ingredients with amounts" },
+    steps: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Short numbered prep steps" },
+  },
+  required: ["dish", "blurb", "calories", "protein", "carbs", "fat", "fiber", "ingredients", "steps"],
+  propertyOrdering: ["dish", "blurb", "calories", "protein", "carbs", "fat", "fiber", "ingredients", "steps"],
+};
+
 export async function suggestMeal(opts: {
   userId: string;
   remaining: { calories: number; protein: number; carbs: number; fat: number; fiber: number };
   meal: string;
+  craving?: string;
   recentFavorites?: string[];
-}): Promise<string> {
-  const { userId, remaining, meal, recentFavorites = [] } = opts;
+}): Promise<import("./types").MealSuggestion> {
+  const { userId, remaining, meal, craving = "", recentFavorites = [] } = opts;
   const favs = recentFavorites.length
     ? `\nThings they eat often: ${recentFavorites.slice(0, 10).join(", ")}.`
     : "";
+  const wants = craving.trim()
+    ? `What they're in the mood for: "${craving.trim()}". Honour this craving while fitting the macros.`
+    : `No specific craving — pick something they'd likely enjoy for ${meal}.`;
+
   const { key, textModel } = await resolveConfig(userId);
+  const isFlash = textModel.includes("flash");
   const res = await clientFor(key).models.generateContent({
     model: textModel,
-    contents: `The user is cutting and has these macros LEFT for the day:
+    contents: `The user is cutting and has these macros LEFT for today:
 - ${remaining.calories} kcal
 - ${remaining.protein} g protein
 - ${remaining.carbs} g carbs
 - ${remaining.fat} g fat
 - ${remaining.fiber} g fiber
-It's around ${meal} time.${favs}
+It's around ${meal} time. ${wants}${favs}
 
-Suggest 2–3 specific, realistic ${meal} options that fit what's left, prioritising hitting the PROTEIN target. For each, give a one-line description with rough calories and protein. Be concise and practical — no preamble, no markdown headers. If almost no calories remain, say so and suggest something light/high-volume.`,
+Suggest ONE specific dish that fits what's left, prioritising hitting the PROTEIN target without exceeding the remaining calories (a little under is fine). Give a real, cookable recipe: realistic ingredients with amounts, and short prep steps. Fill in the macro fields with the totals for the whole recipe as you describe it. If almost no calories remain, suggest something light and high-volume.`,
     config: {
       systemInstruction:
-        "You are a sports dietitian helping someone on a cut. Keep answers short, concrete, and encouraging. Plain text with simple dashes for lists.",
-      temperature: 0.7,
-      maxOutputTokens: 400,
+        "You are a sports dietitian and recipe writer helping someone on a cut. Recipes must be realistic, simple, and high-protein. Return only the structured fields.",
+      responseMimeType: "application/json",
+      responseSchema: suggestionSchema,
+      temperature: 0.8,
+      maxOutputTokens: 2048,
+      ...(isFlash ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
     },
   });
-  return (res.text ?? "Couldn't generate a suggestion right now.").trim();
+
+  const p = parseJSON(res.text ?? "{}");
+  const n = (v: unknown) => (typeof v === "number" && isFinite(v) ? Math.max(0, Math.round(v)) : 0);
+  const arr = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x)).filter(Boolean) : []);
+  return {
+    dish: String(p.dish || "A high-protein plate"),
+    blurb: String(p.blurb || ""),
+    calories: n(p.calories),
+    protein: n(p.protein),
+    carbs: n(p.carbs),
+    fat: n(p.fat),
+    fiber: n(p.fiber),
+    ingredients: arr(p.ingredients),
+    steps: arr(p.steps),
+  };
 }
