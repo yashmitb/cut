@@ -29,9 +29,12 @@ import type { FoodLog, MealSuggestion, MealType, Profile } from "@/lib/types";
 const GLASS_ML = 250;
 
 function shiftDate(date: string, delta: number): string {
-  const d = new Date(date + "T00:00:00");
-  d.setDate(d.getDate() + delta);
-  return d.toISOString().slice(0, 10);
+  // Build from local components and format locally — never round-trip through UTC
+  // (toISOString would shift the day for positive-UTC timezones).
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + delta);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
 }
 
 type Block =

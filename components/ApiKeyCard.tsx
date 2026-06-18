@@ -89,7 +89,7 @@ export default function ApiKeyCard() {
       const r = await api.testSettings();
       setTest(r);
     } catch (e) {
-      setTest({ ok: false, error: (e as Error).message });
+      if (!isCancel(e)) setTest({ ok: false, error: (e as Error).message });
     } finally {
       setTesting(false);
     }

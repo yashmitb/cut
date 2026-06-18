@@ -1,6 +1,9 @@
 // Central auto-retry with a visible countdown. Instead of surfacing a raw error,
 // the app quietly logs it and retries on an escalating schedule: 3s, 5s, 10s,
 // then every 60s — showing "Retrying in N…" the whole time.
+//
+// Designed to be concurrency-safe: multiple in-flight calls can be retrying at
+// once (e.g. the day's food + water load together) without cancelling each other.
 
 export class ApiError extends Error {
   status: number;
@@ -32,9 +35,9 @@ export interface RetryState {
   secondsLeft: number; // 0 means "retrying now"
 }
 
-let state: RetryState | null = null;
-let canceled = false;
-let tickId = 0;
+const active = new Map<number, RetryState>();
+let nextId = 1;
+let cancelEpoch = 0; // bumped on cancel; in-flight calls captured before the bump abort
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -46,41 +49,20 @@ export function subscribeRetry(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
+/** Show the countdown that's closest to its next attempt. */
 export function getRetryState(): RetryState | null {
-  return state;
+  let best: RetryState | null = null;
+  for (const s of active.values()) {
+    if (!best || s.secondsLeft < best.secondsLeft) best = s;
+  }
+  return best;
 }
 
-/** Dismiss the active retry loop. */
+/** Dismiss every active retry. */
 export function cancelRetry() {
-  canceled = true;
-  state = null;
+  cancelEpoch += 1;
+  active.clear();
   emit();
-}
-
-function countdown(label: string, secs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const myTick = ++tickId;
-    let left = secs;
-    state = { label, secondsLeft: left };
-    emit();
-    const timer = setInterval(() => {
-      if (canceled || myTick !== tickId) {
-        clearInterval(timer);
-        reject(new CancelError());
-        return;
-      }
-      left -= 1;
-      if (left <= 0) {
-        clearInterval(timer);
-        state = { label, secondsLeft: 0 }; // "Retrying now…"
-        emit();
-        resolve();
-      } else {
-        state = { label, secondsLeft: left };
-        emit();
-      }
-    }, 1000);
-  });
 }
 
 /** Whether a thrown error is worth retrying (transient). */
@@ -97,40 +79,58 @@ export function isTransient(e: unknown): boolean {
   return true;
 }
 
+function countdown(id: number, myEpoch: number, label: string, secs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let left = secs;
+    active.set(id, { label, secondsLeft: left });
+    emit();
+    const timer = setInterval(() => {
+      if (cancelEpoch !== myEpoch) {
+        clearInterval(timer);
+        active.delete(id);
+        emit();
+        reject(new CancelError());
+        return;
+      }
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(timer);
+        active.set(id, { label, secondsLeft: 0 }); // "Retrying now…"
+        emit();
+        resolve();
+      } else {
+        active.set(id, { label, secondsLeft: left });
+        emit();
+      }
+    }, 1000);
+  });
+}
+
 /**
  * Run `fn`, and on a transient failure show a countdown and retry forever
  * (3s → 5s → 10s → 60s → 60s …). Non-transient errors are rethrown immediately.
  */
 export async function withRetry<T>(fn: () => Promise<T>, label = "Reconnecting"): Promise<T> {
-  canceled = false;
+  const myEpoch = cancelEpoch;
+  const id = nextId++;
   let attempt = 0;
-  for (;;) {
-    try {
-      const result = await fn();
-      if (state) {
-        state = null;
-        emit();
-      }
-      return result;
-    } catch (e) {
-      if (e instanceof CancelError) throw e;
-      if (!isTransient(e)) {
-        if (state) {
-          state = null;
-          emit();
-        }
-        throw e;
-      }
-      // quietly log — never shown to the user
-      console.warn(`[retry] "${label}" attempt ${attempt + 1} failed; will retry.`, e);
-      const wait = SCHEDULE[Math.min(attempt, SCHEDULE.length - 1)];
-      attempt += 1;
+  try {
+    for (;;) {
       try {
-        await countdown(label, wait);
-      } catch {
-        // cancelled mid-countdown
-        throw new CancelError();
+        return await fn();
+      } catch (e) {
+        if (e instanceof CancelError) throw e;
+        if (cancelEpoch !== myEpoch) throw new CancelError();
+        if (!isTransient(e)) throw e;
+        // quietly log — never shown to the user
+        console.warn(`[retry] "${label}" attempt ${attempt + 1} failed; will retry.`, e);
+        const wait = SCHEDULE[Math.min(attempt, SCHEDULE.length - 1)];
+        attempt += 1;
+        await countdown(id, myEpoch, label, wait); // rejects CancelError if dismissed
       }
     }
+  } finally {
+    active.delete(id);
+    emit();
   }
 }
