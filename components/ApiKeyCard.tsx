@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import { CheckIcon, SparkIcon, WarnIcon } from "./Icons";
 
 type Status = {
@@ -32,7 +33,7 @@ export default function ApiKeyCard() {
 
   useEffect(() => {
     refresh()
-      .catch((e) => setError((e as Error).message))
+      .catch((e) => { if (!isCancel(e)) setError((e as Error).message); })
       .finally(() => setLoading(false));
   }, []);
 
@@ -48,7 +49,7 @@ export default function ApiKeyCard() {
       await refresh();
       await runTest(); // confirm it works right away
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -62,7 +63,7 @@ export default function ApiKeyCard() {
       await api.saveSettings({ gemini_api_key: "" });
       await refresh();
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -75,7 +76,7 @@ export default function ApiKeyCard() {
       await api.saveSettings({ gemini_model: modelInput.trim() });
       await refresh();
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
     } finally {
       setSaving(false);
     }

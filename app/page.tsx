@@ -20,6 +20,7 @@ import {
   MEAL_ICONS,
 } from "@/components/Icons";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import { sumTotals, relativeDay } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
@@ -292,7 +293,7 @@ function SuggestSheet({
       setSuggestion(suggestion);
       setPhase("result");
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
       setPhase("ask");
     }
   }
@@ -310,7 +311,7 @@ function SuggestSheet({
       onLogged();
       setTimeout(onClose, 700);
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
     }
   }
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import {
   ACTIVITY_LABELS,
   RATE_LABELS,
@@ -85,7 +86,7 @@ export default function Onboarding() {
       });
       router.replace("/");
     } catch (e) {
-      alert((e as Error).message);
+      if (!isCancel(e)) alert((e as Error).message);
       setSaving(false);
     }
   }

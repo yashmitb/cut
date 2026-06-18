@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import {
   ACTIVITY_LABELS,
   RATE_LABELS,
@@ -95,7 +96,7 @@ export default function ProfilePage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      alert((e as Error).message);
+      if (!isCancel(e)) alert((e as Error).message);
     } finally {
       setSaving(false);
     }
@@ -112,7 +113,7 @@ export default function ProfilePage() {
       setF((o) => ({ ...o, weight: String(val) }));
       setTimeout(() => setWeightSaved(false), 2000);
     } catch (e) {
-      alert((e as Error).message);
+      if (!isCancel(e)) alert((e as Error).message);
     }
   }
 

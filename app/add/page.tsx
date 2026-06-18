@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import { fileToScaledDataUrl } from "@/lib/image";
 import { sumTotals } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
@@ -91,7 +92,7 @@ function AddInner() {
       const res = await api.analyze(dataUrl, "image/jpeg");
       applyResult(res.items, res.notes, res.clarification_question, res.needs_clarification);
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
       setStage("input");
     }
   }
@@ -107,7 +108,7 @@ function AddInner() {
       const res = await api.chat(msg, [], []);
       applyResult(res.items, res.notes, res.clarification_question, res.needs_clarification);
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
       setStage("input");
     }
   }
@@ -129,7 +130,7 @@ function AddInner() {
       setToast(`Added ${item.name} → ${MEAL_META[meal].label}`);
       setTimeout(() => setJustAdded((c) => (c === idx ? null : c)), 1100);
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
     }
   }
 
@@ -147,7 +148,7 @@ function AddInner() {
       setNeedsClarify(res.needs_clarification);
       setChat((c) => [...c, { role: "model", text: res.notes || "Updated." }]);
     } catch (e) {
-      setChat((c) => [...c, { role: "model", text: "Hmm, I couldn't process that: " + (e as Error).message }]);
+      if (!isCancel(e)) setChat((c) => [...c, { role: "model", text: "Hmm, I couldn't process that: " + (e as Error).message }]);
     } finally {
       setBusy(false);
     }
@@ -171,7 +172,7 @@ function AddInner() {
       await api.addItems(date, items, source, meal, group);
       router.replace("/");
     } catch (e) {
-      setError((e as Error).message);
+      if (!isCancel(e)) setError((e as Error).message);
       setBusy(false);
     }
   }

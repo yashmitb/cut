@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import { sumTotals } from "@/lib/format";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
 import type { FoodLog, MealType } from "@/lib/types";
@@ -34,7 +35,7 @@ export default function LogGroup({
       const { items } = await fn();
       onChanged(items);
     } catch (e) {
-      alert((e as Error).message);
+      if (!isCancel(e)) alert((e as Error).message);
     } finally {
       setBusy(false);
     }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { isCancel } from "@/lib/retry";
 import { CheckIcon, PencilIcon, TrashIcon, WarnIcon } from "./Icons";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
 import type { FoodLog } from "@/lib/types";
@@ -26,7 +27,7 @@ export default function LogItem({
       onChanged(items);
       setOpen(false);
     } catch (e) {
-      alert((e as Error).message);
+      if (!isCancel(e)) alert((e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -38,7 +39,7 @@ export default function LogItem({
       const { items } = await api.deleteItem(item.id, date);
       onChanged(items);
     } catch (e) {
-      alert((e as Error).message);
+      if (!isCancel(e)) alert((e as Error).message);
       setBusy(false);
     }
   }

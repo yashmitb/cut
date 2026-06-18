@@ -1,100 +1,82 @@
-// Tiny client-side fetch helpers.
+// Client-side fetch helpers. Every call auto-retries transient failures with a
+// visible countdown (see lib/retry) instead of surfacing a raw error.
 import type { Profile, FoodLog, WeightLog, FoodItem, AnalysisResult, MealType, DayTotals, MealSuggestion } from "./types";
+import { ApiError, withRetry } from "./retry";
 
 const baseUrl = typeof window !== "undefined"
   ? ""
   : (process.env.NEXT_PUBLIC_BASE_URL || "https://cut-eta.vercel.app");
 
-function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${baseUrl}${path}`, init);
+/** Fetch + parse + retry. `label` shows in the countdown ("Retrying in 3…"). */
+function call<T>(label: string, path: string, init?: RequestInit): Promise<T> {
+  return withRetry(async () => {
+    let res: Response;
+    try {
+      res = await fetch(`${baseUrl}${path}`, init);
+    } catch {
+      // network failure — let retry handle it
+      throw new ApiError("Network error", 0);
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new ApiError((data as { error?: string }).error || `Request failed (${res.status})`, res.status);
+    }
+    return data as T;
+  }, label);
 }
 
-async function j<T>(res: Response): Promise<T> {
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
-  return data as T;
-}
+const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
 
 export const api = {
-  getProfile: () => apiFetch("/api/profile").then((r) => j<{ profile: Profile | null }>(r)),
-  saveProfile: (body: unknown) =>
-    apiFetch("/api/profile", { method: "POST", body: JSON.stringify(body) }).then((r) =>
-      j<{ profile: Profile }>(r)
-    ),
+  getProfile: () => call<{ profile: Profile | null }>("Loading profile", "/api/profile"),
+  saveProfile: (body: unknown) => call<{ profile: Profile }>("Saving profile", "/api/profile", post(body)),
 
-  getDay: (date: string) =>
-    apiFetch(`/api/log?date=${date}`).then((r) => j<{ items: FoodLog[] }>(r)),
+  getDay: (date: string) => call<{ items: FoodLog[] }>("Loading your day", `/api/log?date=${date}`),
   addItems: (
     date: string,
     items: FoodItem[],
     source: string,
     meal: MealType,
     group?: { group_id: string; group_label: string }
-  ) =>
-    apiFetch("/api/log", {
-      method: "POST",
-      body: JSON.stringify({ date, items, source, meal, ...(group || {}) }),
-    }).then((r) => j<{ items: FoodLog[] }>(r)),
-  editItem: (body: unknown) =>
-    apiFetch("/api/log", { method: "PATCH", body: JSON.stringify(body) }).then((r) =>
-      j<{ items: FoodLog[] }>(r)
-    ),
+  ) => call<{ items: FoodLog[] }>("Logging food", "/api/log", post({ date, items, source, meal, ...(group || {}) })),
+  editItem: (body: unknown) => call<{ items: FoodLog[] }>("Saving changes", "/api/log", { method: "PATCH", body: JSON.stringify(body) }),
   moveGroup: (group_id: string, patch: { meal?: MealType; group_label?: string }) =>
-    apiFetch("/api/log", { method: "PATCH", body: JSON.stringify({ group_id, ...patch }) }).then((r) =>
-      j<{ items: FoodLog[] }>(r)
-    ),
+    call<{ items: FoodLog[] }>("Updating group", "/api/log", { method: "PATCH", body: JSON.stringify({ group_id, ...patch }) }),
   deleteItem: (id: number, date: string) =>
-    apiFetch(`/api/log?id=${id}&date=${date}`, { method: "DELETE" }).then((r) =>
-      j<{ items: FoodLog[] }>(r)
-    ),
+    call<{ items: FoodLog[] }>("Removing item", `/api/log?id=${id}&date=${date}`, { method: "DELETE" }),
   deleteGroup: (group_id: string, date: string) =>
-    apiFetch(`/api/log?group=${group_id}&date=${date}`, { method: "DELETE" }).then((r) =>
-      j<{ items: FoodLog[] }>(r)
-    ),
+    call<{ items: FoodLog[] }>("Removing group", `/api/log?group=${group_id}&date=${date}`, { method: "DELETE" }),
 
   analyze: (image: string, mimeType: string, hint?: string) =>
-    apiFetch("/api/analyze", { method: "POST", body: JSON.stringify({ image, mimeType, hint }) }).then(
-      (r) => j<AnalysisResult>(r)
-    ),
+    call<AnalysisResult>("Analyzing your photo", "/api/analyze", post({ image, mimeType, hint })),
   chat: (message: string, currentItems: FoodItem[], history: { role: "user" | "model"; text: string }[]) =>
-    apiFetch("/api/chat", { method: "POST", body: JSON.stringify({ message, currentItems, history }) }).then(
-      (r) => j<AnalysisResult>(r)
-    ),
+    call<AnalysisResult>("Asking the coach", "/api/chat", post({ message, currentItems, history })),
 
-  getRecent: () =>
-    apiFetch("/api/recent").then((r) => j<{ items: (FoodItem & { count?: number })[] }>(r)),
+  getRecent: () => call<{ items: (FoodItem & { count?: number })[] }>("Loading recents", "/api/recent"),
   suggest: (remaining: DayTotals, meal: MealType, craving: string) =>
-    apiFetch("/api/suggest", { method: "POST", body: JSON.stringify({ ...remaining, meal, craving }) }).then(
-      (r) => j<{ suggestion: MealSuggestion }>(r)
-    ),
+    call<{ suggestion: MealSuggestion }>("Cooking up an idea", "/api/suggest", post({ ...remaining, meal, craving })),
 
-  getWater: (date: string) => apiFetch(`/api/water?date=${date}`).then((r) => j<{ ml: number }>(r)),
-  addWater: (date: string, delta: number) =>
-    apiFetch("/api/water", { method: "POST", body: JSON.stringify({ date, delta }) }).then((r) =>
-      j<{ ml: number }>(r)
-    ),
+  getWater: (date: string) => call<{ ml: number }>("Loading water", `/api/water?date=${date}`),
+  addWater: (date: string, delta: number) => call<{ ml: number }>("Updating water", "/api/water", post({ date, delta })),
 
   getSettings: () =>
-    apiFetch("/api/settings").then((r) =>
-      j<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(r)
+    call<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(
+      "Loading settings",
+      "/api/settings"
     ),
   saveSettings: (body: { gemini_api_key?: string; gemini_model?: string }) =>
-    apiFetch("/api/settings", { method: "POST", body: JSON.stringify(body) }).then((r) =>
-      j<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(r)
+    call<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(
+      "Saving settings",
+      "/api/settings",
+      post(body)
     ),
   testSettings: () =>
-    apiFetch("/api/settings", { method: "POST", body: JSON.stringify({ action: "test" }) }).then((r) =>
-      j<{ ok: boolean; model: string; error?: string }>(r)
-    ),
+    call<{ ok: boolean; model: string; error?: string }>("Testing connection", "/api/settings", post({ action: "test" })),
 
-  getWeights: () => apiFetch("/api/weight").then((r) => j<{ weights: WeightLog[] }>(r)),
+  getWeights: () => call<{ weights: WeightLog[] }>("Loading weights", "/api/weight"),
   addWeight: (date: string, weight_kg: number) =>
-    apiFetch("/api/weight", { method: "POST", body: JSON.stringify({ date, weight_kg }) }).then((r) =>
-      j<{ weights: WeightLog[] }>(r)
-    ),
+    call<{ weights: WeightLog[] }>("Saving weight", "/api/weight", post({ date, weight_kg })),
 
   getProgress: (days: number) =>
-    apiFetch(`/api/progress?days=${days}`).then((r) =>
-      j<{ days: import("@/app/api/progress/route").DayRow[] }>(r)
-    ),
+    call<{ days: import("@/app/api/progress/route").DayRow[] }>("Loading progress", `/api/progress?days=${days}`),
 };
