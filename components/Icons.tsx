@@ -26,6 +26,7 @@ import {
   ChevronDown,
   Search,
   BookOpen,
+  MessageCircleQuestion,
   type LucideIcon,
 } from "lucide-react";
 import type { MealType } from "@/lib/types";
@@ -47,6 +48,7 @@ export const PencilIcon = Pencil;
 export const ImageIcon = LImage;
 export const ScaleIcon = Scale;
 export { Flame, Sprout, Layers, ChevronDown, Search, BookOpen };
+export const AskIcon = MessageCircleQuestion;
 
 export const MEAL_ICONS: Record<MealType, LucideIcon> = {
   breakfast: Sunrise,

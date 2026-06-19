@@ -496,3 +496,35 @@ Suggest ONE specific dish that fits what's left, prioritising hitting the PROTEI
     steps: arr(p.steps),
   };
 }
+
+/**
+ * Open-ended nutrition Q&A coach. Answers questions like "which is better,
+ * X or Y?" using the user's targets + what they've eaten today (passed as
+ * `context`). Plain-text reply, multi-turn aware.
+ */
+export async function askCoach(opts: {
+  userId: string;
+  message: string;
+  history?: ChatTurn[];
+  context: string;
+}): Promise<string> {
+  const { userId, message, history = [], context } = opts;
+  const { key, textModel } = await resolveConfig(userId);
+  const contents = [
+    ...history.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
+    { role: "user" as const, parts: [{ text: message }] },
+  ];
+  const res = await runWithModels(textModel, (model) =>
+    clientFor(key).models.generateContent({
+      model,
+      contents,
+      config: {
+        systemInstruction:
+          `You are Cut's nutrition coach — a friendly, sharp sports dietitian for someone actively cutting (losing fat while keeping muscle). Answer their question directly and practically in a few short sentences. When they compare two foods or options, pick a clear winner and say why in one line, citing the key numbers that matter on a cut (calories and protein first). Personalize using their context below when relevant. Be encouraging and concrete, never preachy; skip medical disclaimers unless genuinely warranted. Plain text; short bullet points are fine.\n\nUSER CONTEXT (today):\n${context}`,
+        temperature: 0.6,
+        maxOutputTokens: 800,
+      },
+    })
+  );
+  return (res.text ?? "").trim() || "Hmm, I didn't catch that — mind rephrasing?";
+}

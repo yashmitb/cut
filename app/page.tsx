@@ -8,6 +8,7 @@ import MacroBar from "@/components/MacroBar";
 import LogItem from "@/components/LogItem";
 import LogGroup from "@/components/LogGroup";
 import {
+  AskIcon,
   BookOpen,
   CameraIcon,
   CheckIcon,
@@ -188,6 +189,17 @@ export default function TodayPage() {
           <p className="text-xs text-[var(--muted)]">AI picks a meal for your {Math.round(remaining.calories)} kcal left</p>
         </div>
       </button>
+
+      {/* Ask the coach */}
+      <Link href="/ask" className="glass card w-full p-3.5 mb-3 flex items-center gap-3 rise rise-2 pressable">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(168,208,240,0.16)", color: "var(--p-carbs)" }}>
+          <AskIcon width={18} height={18} />
+        </div>
+        <div className="text-left">
+          <p className="text-sm font-semibold">Ask the coach</p>
+          <p className="text-xs text-[var(--muted)]">“Which is better, X or Y?” · food advice, anytime</p>
+        </div>
+      </Link>
 
       {/* Water */}
       <section className="glass card p-4 mb-4 rise rise-2 flex items-center justify-between">

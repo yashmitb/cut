@@ -53,6 +53,9 @@ export const api = {
   chat: (message: string, currentItems: FoodItem[], history: { role: "user" | "model"; text: string }[]) =>
     call<AnalysisResult>("Asking the coach", "/api/chat", post({ message, currentItems, history })),
 
+  ask: (message: string, history: { role: "user" | "model"; text: string }[], date: string) =>
+    call<{ text: string }>("Thinking", "/api/ask", post({ message, history, date })),
+
   getRecent: () => call<{ items: (FoodItem & { count?: number })[] }>("Loading recents", "/api/recent"),
   suggest: (remaining: DayTotals, meal: MealType, craving: string) =>
     call<{ suggestion: MealSuggestion }>("Cooking up an idea", "/api/suggest", post({ ...remaining, meal, craving })),
