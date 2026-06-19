@@ -299,6 +299,13 @@ function SuggestSheet({
   const [suggestion, setSuggestion] = useState<MealSuggestion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logged, setLogged] = useState(false);
+  const [closing, setClosing] = useState(false);
+
+  // animate the sheet out before unmounting
+  const requestClose = () => {
+    setClosing(true);
+    setTimeout(onClose, 260);
+  };
 
   async function ask(c: string) {
     setError(null);
@@ -324,17 +331,17 @@ function SuggestSheet({
       );
       setLogged(true);
       onLogged();
-      setTimeout(onClose, 700);
+      setTimeout(requestClose, 650);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 fade-in" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }} />
+    <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={requestClose}>
+      <div className={`absolute inset-0 ${closing ? "fade-out" : "fade-in"}`} style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }} />
       <div
-        className="glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)] sheet-up flex flex-col"
+        className={`glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)] ${closing ? "sheet-down" : "sheet-up"} flex flex-col`}
         style={{ maxHeight: "88dvh" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -450,7 +457,7 @@ function SuggestSheet({
               </button>
             </div>
           ) : (
-            <button onClick={onClose} className="btn btn-ghost w-full">Close</button>
+            <button onClick={requestClose} className="btn btn-ghost w-full">Close</button>
           )}
         </div>
       </div>
