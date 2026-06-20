@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CameraIcon, ChartIcon, HomeIcon, UserIcon } from "./Icons";
+import { AskIcon, CameraIcon, ChartIcon, HomeIcon, UserIcon } from "./Icons";
 
 export default function BottomNav() {
   const path = usePathname();
@@ -16,7 +16,8 @@ export default function BottomNav() {
     return (
       <Link
         href={href}
-        className="flex flex-col items-center justify-center gap-1 py-1 px-3 pressable"
+        aria-label={label}
+        className="flex flex-col items-center justify-center gap-1.5 py-1 px-3 pressable"
         style={{ color: active ? "var(--fg)" : "var(--faint)", transition: "color 0.25s ease" }}
       >
         <Icon
@@ -25,7 +26,6 @@ export default function BottomNav() {
           strokeWidth={active ? 2.1 : 1.7}
           style={{ transform: active ? "translateY(-1px)" : "none", transition: "transform 0.25s cubic-bezier(0.16,1,0.3,1)" }}
         />
-        <span className="text-[10px] font-semibold tracking-wide">{label}</span>
         <span
           className="rounded-full"
           style={{
@@ -42,7 +42,7 @@ export default function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 pointer-events-none">
-      <div className="glass-strong relative flex items-center w-full max-w-md rounded-[28px] px-2 h-[68px] pointer-events-auto">
+      <div className="glass-strong relative flex items-center w-full max-w-md rounded-[28px] px-2 h-[64px] pointer-events-auto">
         <div className="flex flex-1 justify-around">
           {tab("/", HomeIcon, "Today")}
           {tab("/progress", ChartIcon, "Progress")}
@@ -63,6 +63,7 @@ export default function BottomNav() {
         </Link>
 
         <div className="flex flex-1 justify-around">
+          {tab("/ask", AskIcon, "Coach")}
           {tab("/profile", UserIcon, "Profile")}
         </div>
       </div>

@@ -120,8 +120,8 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <main className="px-4 pb-32">
-        <AppLoader label="Loading profile…" />
+      <main className="min-h-dvh flex items-center justify-center px-4 pb-24">
+        <AppLoader full={false} label="Loading profile…" />
       </main>
     );
   }

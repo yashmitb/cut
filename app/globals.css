@@ -40,6 +40,9 @@
 
 html {
   color-scheme: dark;
+  /* paint the base color on html too so any area body doesn't cover (overscroll,
+     short loading screens, safe-area) never reveals the browser's default black */
+  background: var(--bg);
 }
 
 body {

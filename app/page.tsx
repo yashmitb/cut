@@ -493,8 +493,8 @@ function MiniStat({ label, value, accent, suffix }: { label: string; value: numb
 
 function LoadingToday() {
   return (
-    <main className="px-4 pb-32">
-      <AppLoader label="Loading your day…" />
+    <main className="min-h-dvh flex items-center justify-center px-4 pb-24">
+      <AppLoader full={false} label="Loading your day…" />
     </main>
   );
 }
