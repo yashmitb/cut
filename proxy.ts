@@ -56,7 +56,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // everything except Next internals and static assets
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|apple-icon|sw.js|.*\\.(?:png|jpg|jpeg|svg|gif|webp)$).*)",
+    // Pages only. /api is excluded so API calls don't pay an extra getUser()
+    // round trip in the proxy — each route does its own auth. Static assets and
+    // Next internals are excluded too.
+    "/((?!api|_next/static|_next/image|favicon.ico|manifest.webmanifest|icon|apple-icon|sw.js|.*\\.(?:png|jpg|jpeg|svg|gif|webp)$).*)",
   ],
 };

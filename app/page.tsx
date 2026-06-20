@@ -82,13 +82,15 @@ export default function TodayPage() {
   useEffect(() => {
     (async () => {
       try {
-        const { profile } = await api.getProfile();
+        // single round trip for profile + today's food + water
+        const { profile, items, water } = await api.getToday(today);
         if (!profile) {
           router.replace("/onboarding");
           return;
         }
         setProfile(profile);
-        await loadDay(today);
+        setItems(items);
+        setWater(water);
       } catch (e) {
         console.error(e);
       } finally {

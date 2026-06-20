@@ -32,6 +32,8 @@ export const api = {
   getProfile: () => call<{ profile: Profile | null }>("Loading profile", "/api/profile"),
   saveProfile: (body: unknown) => call<{ profile: Profile }>("Saving profile", "/api/profile", post(body)),
 
+  getToday: (date: string) =>
+    call<{ profile: Profile | null; items: FoodLog[]; water: number }>("Loading your day", `/api/today?date=${date}`),
   getDay: (date: string) => call<{ items: FoodLog[] }>("Loading your day", `/api/log?date=${date}`),
   addItems: (
     date: string,
