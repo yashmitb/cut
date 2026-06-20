@@ -493,7 +493,8 @@ function MiniStat({ label, value, accent, suffix }: { label: string; value: numb
 
 function LoadingToday() {
   return (
-    <main className="min-h-dvh flex items-center justify-center px-4 pb-24">
+    // solid background so the ambient glow doesn't make the empty screen look two-tone
+    <main className="min-h-dvh flex items-center justify-center px-4 pb-24" style={{ background: "var(--bg)" }}>
       <AppLoader full={false} label="Loading your day…" />
     </main>
   );

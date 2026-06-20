@@ -120,7 +120,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <main className="min-h-dvh flex items-center justify-center px-4 pb-24">
+      <main className="min-h-dvh flex items-center justify-center px-4 pb-24" style={{ background: "var(--bg)" }}>
         <AppLoader full={false} label="Loading profile…" />
       </main>
     );
