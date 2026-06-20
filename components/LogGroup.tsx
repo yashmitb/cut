@@ -7,6 +7,7 @@ import { sumTotals } from "@/lib/format";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
 import type { FoodLog, MealType } from "@/lib/types";
 import { ChevronDown, Layers, TrashIcon } from "./Icons";
+import LogItem from "./LogItem";
 
 export default function LogGroup({
   id,
@@ -61,20 +62,12 @@ export default function LogGroup({
       {/* body */}
       {open && (
         <div className="px-3.5 pb-3.5 pt-1" style={{ borderTop: "1px solid var(--line)" }}>
-          <ul className="flex flex-col divide-y" style={{ borderColor: "var(--line)" }}>
+          <p className="label !text-[10px] mb-2">Items · tap to edit</p>
+          <div className="flex flex-col gap-2">
             {items.map((it) => (
-              <li key={it.id} className="flex items-center gap-2 py-2">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm truncate">{it.name}</p>
-                  {it.quantity && <p className="text-[11px] text-[var(--faint)] truncate">{it.quantity}</p>}
-                </div>
-                <span className="text-sm tabular text-[var(--muted)]">{Math.round(it.calories)}</span>
-                <button onClick={() => run(() => api.deleteItem(it.id, date))} disabled={busy} className="text-[var(--faint)] hover:text-[var(--p-warn)] pressable p-1" aria-label="Remove">
-                  <TrashIcon width={15} height={15} />
-                </button>
-              </li>
+              <LogItem key={it.id} item={it} date={date} onChanged={onChanged} hideMeal />
             ))}
-          </ul>
+          </div>
 
           {/* rename */}
           <div className="mt-3">

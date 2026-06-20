@@ -7,6 +7,7 @@ import CalorieRing from "@/components/CalorieRing";
 import MacroBar from "@/components/MacroBar";
 import LogItem from "@/components/LogItem";
 import LogGroup from "@/components/LogGroup";
+import AppLoader from "@/components/AppLoader";
 import {
   AskIcon,
   BookOpen,
@@ -490,11 +491,8 @@ function MiniStat({ label, value, accent, suffix }: { label: string; value: numb
 
 function LoadingToday() {
   return (
-    <main className="px-4 pt-12 pb-32">
-      <div className="skeleton h-8 w-32 mb-6 mx-auto" />
-      <div className="skeleton h-72 w-full mb-4 rounded-3xl" />
-      <div className="skeleton h-44 w-full mb-4 rounded-3xl" />
-      <div className="skeleton h-20 w-full rounded-3xl" />
+    <main className="px-4 pb-32">
+      <AppLoader label="Loading your day…" />
     </main>
   );
 }

@@ -18,6 +18,7 @@ import type { Activity, Profile, Rate, Sex, Units } from "@/lib/types";
 import { CheckIcon, ScaleIcon, WarnIcon } from "@/components/Icons";
 import ApiKeyCard from "@/components/ApiKeyCard";
 import AccountCard from "@/components/AccountCard";
+import AppLoader from "@/components/AppLoader";
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -119,10 +120,8 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <main className="px-4 pt-12 pb-32">
-        <div className="skeleton h-8 w-28 mb-6" />
-        <div className="skeleton h-40 w-full rounded-3xl mb-4" />
-        <div className="skeleton h-72 w-full rounded-3xl" />
+      <main className="px-4 pb-32">
+        <AppLoader label="Loading profile…" />
       </main>
     );
   }

@@ -21,10 +21,12 @@ export default function LogItem({
   item,
   date,
   onChanged,
+  hideMeal = false,
 }: {
   item: FoodLog;
   date: string;
   onChanged: (items: FoodLog[]) => void;
+  hideMeal?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -158,14 +160,18 @@ export default function LogItem({
           {num("fiber", "Fiber", "var(--p-fiber)")}
         </div>
 
-        <p className="label !text-[10px] mb-1.5">Meal</p>
-        <div className="seg mb-3">
-          {MEAL_ORDER.map((m) => (
-            <div key={m} className="seg-item !text-[11px] !px-1 !py-1.5" data-on={draft.meal === m} onClick={() => setDraft((d) => ({ ...d, meal: m }))}>
-              {MEAL_META[m].label}
+        {!hideMeal && (
+          <>
+            <p className="label !text-[10px] mb-1.5">Meal</p>
+            <div className="seg mb-3">
+              {MEAL_ORDER.map((m) => (
+                <div key={m} className="seg-item !text-[11px] !px-1 !py-1.5" data-on={draft.meal === m} onClick={() => setDraft((d) => ({ ...d, meal: m }))}>
+                  {MEAL_META[m].label}
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
         <div className="flex gap-2">
           <button onClick={() => setOpen(false)} className="btn btn-ghost flex-1 !py-2.5">Cancel</button>
           <button onClick={save} disabled={busy} className="btn btn-primary flex-1 !py-2.5">

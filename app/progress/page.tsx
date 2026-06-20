@@ -16,6 +16,7 @@ import {
 import { api } from "@/lib/api";
 import { displayWeight, shortDate } from "@/lib/format";
 import { Flame, Sprout } from "@/components/Icons";
+import AppLoader from "@/components/AppLoader";
 import type { Profile, Units } from "@/lib/types";
 import type { DayRow } from "@/app/api/progress/route";
 
@@ -96,6 +97,10 @@ export default function ProgressPage() {
         </div>
       </header>
 
+      {loading ? (
+        <AppLoader label="Crunching your numbers…" />
+      ) : (
+        <>
       {/* streak banner */}
       <div className="glass card p-4 mb-3 flex items-center gap-3.5" style={{ background: "linear-gradient(120deg, rgba(247,197,159,0.12), rgba(246,166,184,0.05))" }}>
         <span className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${stats.streak > 0 ? "halo" : ""}`} style={{ background: stats.streak > 0 ? "rgba(247,197,159,0.16)" : "rgba(181,232,201,0.14)", color: stats.streak > 0 ? "var(--p-warn)" : "var(--p-fiber)" }}>
@@ -120,9 +125,6 @@ export default function ProgressPage() {
         <StatCard label="On-target days" value={`${stats.adherence}%`} sub={`${stats.loggedDays} logged`} color="var(--p-carbs)" />
       </div>
 
-      {loading ? (
-        <div className="skeleton h-56 w-full rounded-3xl" />
-      ) : (
         <div className="flex flex-col gap-4">
           {/* Calories */}
           <ChartCard title="Calories per day" accent="var(--p-cal)">
@@ -179,6 +181,7 @@ export default function ProgressPage() {
             </ResponsiveContainer>
           </ChartCard>
         </div>
+        </>
       )}
     </main>
   );

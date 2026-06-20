@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { isCancel } from "@/lib/retry";
 import { CheckIcon, SparkIcon, WarnIcon } from "./Icons";
+import AppLoader from "./AppLoader";
 
 type Status = {
   hasKey: boolean;
@@ -96,7 +97,7 @@ export default function ApiKeyCard() {
   }
 
   if (loading) {
-    return <section className="glass card p-5 mb-4"><div className="skeleton h-24 w-full rounded-2xl" /></section>;
+    return <section className="glass card p-5 mb-4"><AppLoader size={36} full={false} /></section>;
   }
 
   const linked = status?.hasKey;
