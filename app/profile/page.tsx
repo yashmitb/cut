@@ -128,7 +128,7 @@ export default function ProfilePage() {
 
   return (
     <main className="px-4 pt-[max(env(safe-area-inset-top),20px)] pb-32">
-      <header className="mb-5">
+      <header className="mb-5 rise">
         <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
         {profile?.name && <p className="text-[var(--muted)]">{profile.name}</p>}
       </header>
@@ -138,7 +138,7 @@ export default function ProfilePage() {
 
       {/* current plan summary */}
       {targets && (
-        <section className="glass card p-5 mb-4">
+        <section className="glass card p-5 mb-4 rise rise-1">
           <p className="label mb-2">Current daily targets</p>
           <div className="flex items-baseline gap-2 mb-3">
             <span className="text-4xl font-bold tabular">{targets.target_calories}</span>

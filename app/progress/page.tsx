@@ -102,7 +102,7 @@ export default function ProgressPage() {
       ) : (
         <>
       {/* streak banner */}
-      <div className="glass card p-4 mb-3 flex items-center gap-3.5" style={{ background: "linear-gradient(120deg, rgba(247,197,159,0.12), rgba(246,166,184,0.05))" }}>
+      <div className="glass card p-4 mb-3 flex items-center gap-3.5 rise" style={{ background: "linear-gradient(120deg, rgba(247,197,159,0.12), rgba(246,166,184,0.05))" }}>
         <span className={`w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0 ${stats.streak > 0 ? "halo" : ""}`} style={{ background: stats.streak > 0 ? "rgba(247,197,159,0.16)" : "rgba(181,232,201,0.14)", color: stats.streak > 0 ? "var(--p-warn)" : "var(--p-fiber)" }}>
           {stats.streak > 0 ? <Flame width={22} height={22} /> : <Sprout width={22} height={22} />}
         </span>
@@ -113,7 +113,7 @@ export default function ProgressPage() {
       </div>
 
       {/* summary stats */}
-      <div className="grid grid-cols-2 gap-3 mb-4">
+      <div className="grid grid-cols-2 gap-3 mb-4 rise rise-1">
         <StatCard label="Avg calories" value={stats.avgCal.toString()} sub={profile ? `target ${profile.target_calories}` : ""} color="var(--p-cal)" />
         <StatCard label="Avg protein" value={`${stats.avgProtein}g`} sub={profile ? `target ${profile.target_protein}g` : ""} color="var(--p-protein)" />
         <StatCard
@@ -125,7 +125,7 @@ export default function ProgressPage() {
         <StatCard label="On-target days" value={`${stats.adherence}%`} sub={`${stats.loggedDays} logged`} color="var(--p-carbs)" />
       </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 rise rise-2">
           {/* Calories */}
           <ChartCard title="Calories per day" accent="var(--p-cal)">
             <ResponsiveContainer width="100%" height={180}>

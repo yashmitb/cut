@@ -50,8 +50,9 @@ export default function AskPage() {
   const empty = messages.length === 0;
 
   return (
-    <main className="min-h-dvh flex flex-col px-4 pt-[max(env(safe-area-inset-top),18px)]">
-      <header className="flex items-center gap-2 mb-2 flex-shrink-0">
+    // exact viewport height so the message list scrolls and the input bar stays put
+    <main className="h-dvh flex flex-col px-4 pt-[max(env(safe-area-inset-top),18px)]">
+      <header className="flex items-center gap-2 mb-2 flex-shrink-0 rise">
         <button onClick={() => router.back()} className="text-[var(--muted)] -ml-1 pressable" aria-label="Back">
           <ChevronLeft />
         </button>
@@ -64,20 +65,21 @@ export default function AskPage() {
       {/* conversation */}
       <div className="flex-1 overflow-y-auto -mx-1 px-1 pb-3">
         {empty ? (
-          <div className="flex flex-col items-center text-center pt-10 pb-6 rise">
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "rgba(201,184,240,0.14)", color: "var(--p-cal)" }}>
+          <div className="flex flex-col items-center text-center pt-10 pb-6">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-4 pop" style={{ background: "rgba(201,184,240,0.14)", color: "var(--p-cal)" }}>
               <AskIcon width={30} height={30} />
             </div>
-            <p className="font-semibold text-lg">Ask me anything about your food</p>
-            <p className="text-sm text-[var(--muted)] mt-1 mb-6 max-w-xs">
+            <p className="font-semibold text-lg rise rise-1">Ask me anything about your food</p>
+            <p className="text-sm text-[var(--muted)] mt-1 mb-6 max-w-xs rise rise-2">
               Compare options, sanity-check a meal, or get advice — I know your targets and what you&apos;ve eaten today.
             </p>
             <div className="flex flex-col gap-2 w-full">
-              {STARTERS.map((s) => (
+              {STARTERS.map((s, i) => (
                 <button
                   key={s}
                   onClick={() => send(s)}
-                  className="glass card p-3.5 text-left text-sm flex items-center gap-2.5 pressable"
+                  className="glass card p-3.5 text-left text-sm flex items-center gap-2.5 pressable rise"
+                  style={{ animationDelay: `${0.14 + i * 0.06}s` }}
                 >
                   <span style={{ color: "var(--p-cal)" }} className="flex-shrink-0"><SparkIcon width={15} height={15} /></span>
                   {s}
@@ -90,7 +92,7 @@ export default function AskPage() {
             {messages.map((m, i) => (
               <div
                 key={i}
-                className="px-3.5 py-2.5 rounded-2xl max-w-[88%] text-sm whitespace-pre-line leading-relaxed"
+                className="px-3.5 py-2.5 rounded-2xl max-w-[88%] text-sm whitespace-pre-line leading-relaxed msg-in"
                 style={
                   m.role === "user"
                     ? { alignSelf: "flex-end", background: "rgba(255,255,255,0.92)", color: "#0a0a0a" }
@@ -101,7 +103,7 @@ export default function AskPage() {
               </div>
             ))}
             {busy && (
-              <div className="px-3.5 py-3 rounded-2xl self-start" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--line)" }}>
+              <div className="px-3.5 py-3 rounded-2xl self-start msg-in" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--line)" }}>
                 <span className="spin inline-block w-4 h-4 rounded-full align-middle" style={{ border: "2px solid rgba(255,255,255,0.15)", borderTopColor: "var(--p-cal)" }} />
               </div>
             )}
@@ -110,8 +112,8 @@ export default function AskPage() {
         )}
       </div>
 
-      {/* input bar */}
-      <div className="flex-shrink-0 pb-[max(env(safe-area-inset-bottom),16px)] pt-2">
+      {/* input bar — bottom padding reserves room for the fixed bottom nav */}
+      <div className="flex-shrink-0 pt-2 pb-[calc(92px+env(safe-area-inset-bottom))]">
         <div className="flex gap-2">
           <input
             className="field"
