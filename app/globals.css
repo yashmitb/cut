@@ -5,6 +5,11 @@
    Black & white base, pastel accents reserved for data viz.
    ========================================================================= */
 
+/* hide the floating bottom nav while a modal sheet is open */
+body[data-sheet-open] .app-bottom-nav {
+  display: none;
+}
+
 :root {
   --bg: #07070a;
   --bg-2: #0d0d12;

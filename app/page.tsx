@@ -348,12 +348,14 @@ function SuggestSheet({
     body.style.top = `-${scrollY}px`;
     body.style.width = "100%";
     body.style.overflow = "hidden";
+    body.setAttribute("data-sheet-open", "1"); // hide the bottom nav while the modal is up
     return () => {
       clearTimeout(t);
       body.style.position = prev.position;
       body.style.top = prev.top;
       body.style.width = prev.width;
       body.style.overflow = prev.overflow;
+      body.removeAttribute("data-sheet-open");
       window.scrollTo(0, scrollY);
     };
   }, []);

@@ -44,7 +44,7 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 pointer-events-none">
+    <nav className="app-bottom-nav fixed bottom-0 left-0 right-0 z-50 flex justify-center px-4 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 pointer-events-none">
       <div className="glass-strong relative flex items-center w-full max-w-md rounded-[28px] px-2 h-[64px] pointer-events-auto">
         {tab("/", HomeIcon, "Today")}
         {tab("/progress", ChartIcon, "Progress")}
