@@ -170,7 +170,7 @@ function AddInner() {
           ? { group_id: crypto.randomUUID(), group_label: groupName.trim() || items[0].name }
           : undefined;
       await api.addItems(date, items, source, meal, group);
-      router.replace("/");
+      router.replace(backToDay);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
       setBusy(false);
@@ -180,18 +180,20 @@ function AddInner() {
   const totals = sumTotals(items);
   const isToday = date === todayLocal();
   const dateLabel = isToday ? "today" : new Date(date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  // return to the day being edited (not always today)
+  const backToDay = isToday ? "/" : `/?date=${date}`;
 
   return (
     <main className="min-h-dvh flex flex-col px-4 pt-[max(env(safe-area-inset-top),18px)]">
       <header className="flex items-center justify-between gap-2 mb-3">
         <div className="flex items-center gap-2">
-          <button onClick={() => (quickAdded > 0 ? router.replace("/") : router.back())} className="text-[var(--muted)] -ml-1 pressable" aria-label="Back">
+          <button onClick={() => (quickAdded > 0 ? router.replace(backToDay) : router.back())} className="text-[var(--muted)] -ml-1 pressable" aria-label="Back">
             <ChevronLeft />
           </button>
           <h1 className="text-lg font-bold">{stage === "review" ? "Review & log" : "Add food"}</h1>
         </div>
         {quickAdded > 0 && (
-          <button onClick={() => router.replace("/")} className="chip pressable" style={{ color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.3)" }}>
+          <button onClick={() => router.replace(backToDay)} className="chip pressable" style={{ color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.3)" }}>
             <CheckIcon width={13} height={13} /> {quickAdded} added · Done
           </button>
         )}

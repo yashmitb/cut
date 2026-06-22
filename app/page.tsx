@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import CalorieRing from "@/components/CalorieRing";
 import MacroBar from "@/components/MacroBar";
@@ -29,6 +29,7 @@ import { MEAL_META, MEAL_ORDER } from "@/lib/types";
 import type { FoodLog, MealSuggestion, MealType, Profile } from "@/lib/types";
 
 const GLASS_ML = 250;
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 function shiftDate(date: string, delta: number): string {
   // Build from local components and format locally — never round-trip through UTC
@@ -64,10 +65,22 @@ function buildBlocks(rows: FoodLog[]): Block[] {
 }
 
 export default function TodayPage() {
+  return (
+    <Suspense fallback={<LoadingToday />}>
+      <TodayInner />
+    </Suspense>
+  );
+}
+
+function TodayInner() {
   const router = useRouter();
+  const params = useSearchParams();
   const today = todayLocal();
+  // deep-link to a past day via ?date= (used when returning from Add on a past day)
+  const qd = params.get("date");
+  const initialDate = qd && DATE_RE.test(qd) && qd <= today ? qd : today;
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState(initialDate);
   const [items, setItems] = useState<FoodLog[]>([]);
   const [water, setWater] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -82,8 +95,8 @@ export default function TodayPage() {
   useEffect(() => {
     (async () => {
       try {
-        // single round trip for profile + today's food + water
-        const { profile, items, water } = await api.getToday(today);
+        // single round trip for profile + the day's food + water
+        const { profile, items, water } = await api.getToday(initialDate);
         if (!profile) {
           router.replace("/onboarding");
           return;
@@ -302,19 +315,81 @@ function SuggestSheet({
   const [suggestion, setSuggestion] = useState<MealSuggestion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logged, setLogged] = useState(false);
-  const [closing, setClosing] = useState(false);
 
-  // animate the sheet out before unmounting
+  // adjustable calorie budget for this meal — macros scale proportionally
+  const baseCal = Math.max(0, Math.round(remaining.calories));
+  const [budget, setBudget] = useState(baseCal > 0 ? baseCal : 400);
+  const factor = baseCal > 0 ? budget / baseCal : 1;
+  const scaled = {
+    calories: budget,
+    protein: Math.round(remaining.protein * factor),
+    carbs: Math.round(remaining.carbs * factor),
+    fat: Math.round(remaining.fat * factor),
+    fiber: Math.round(remaining.fiber * factor),
+    sugar: 0,
+    sodium: 0,
+  };
+
+  // sheet motion: CSS class for the entrance, inline transform for drag + exit
+  const [entered, setEntered] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [dragY, setDragY] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const startY = useRef(0);
+  const dragYRef = useRef(0);
+
+  // hand off from the CSS entrance to interactive transform; lock background scroll
+  useEffect(() => {
+    const t = setTimeout(() => setEntered(true), 360);
+    const scrollY = window.scrollY;
+    const body = document.body;
+    const prev = { position: body.style.position, top: body.style.top, width: body.style.width, overflow: body.style.overflow };
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    body.style.overflow = "hidden";
+    return () => {
+      clearTimeout(t);
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      body.style.overflow = prev.overflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   const requestClose = () => {
+    if (closing) return;
     setClosing(true);
-    setTimeout(onClose, 260);
+    setTimeout(onClose, 300);
+  };
+
+  // drag-to-dismiss from the grab handle / header
+  const onTouchStart = (e: React.TouchEvent) => {
+    startY.current = e.touches[0].clientY;
+    setEntered(true); // ensure interactive transform is active even if the entrance timer is slow
+    setDragging(true);
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    const d = Math.max(0, e.touches[0].clientY - startY.current);
+    dragYRef.current = d;
+    setDragY(d);
+  };
+  const onTouchEnd = () => {
+    setDragging(false);
+    if (dragYRef.current > 110) {
+      requestClose();
+    } else {
+      dragYRef.current = 0;
+      setDragY(0);
+    }
   };
 
   async function ask(c: string) {
     setError(null);
     setPhase("loading");
     try {
-      const { suggestion } = await api.suggest(remaining, mealNow(), c === "Surprise me" ? "" : c);
+      const { suggestion } = await api.suggest(scaled, mealNow(), c === "Surprise me" ? "" : c);
       setSuggestion(suggestion);
       setPhase("result");
     } catch (e) {
@@ -340,28 +415,71 @@ function SuggestSheet({
     }
   }
 
+  // entrance via CSS class; once entered, drive transform inline (drag); exit slides fully down
+  const backdropClass = closing ? "" : !entered ? "fade-in" : "";
+  const backdropStyle: React.CSSProperties = { background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" };
+  if (closing) Object.assign(backdropStyle, { opacity: 0, transition: "opacity 0.3s ease" });
+  else if (entered) Object.assign(backdropStyle, { opacity: Math.max(0, 1 - dragY / 450), transition: dragging ? "none" : "opacity 0.3s ease" });
+
+  const sheetClass = closing ? "" : !entered ? "sheet-up" : "";
+  const sheetStyle: React.CSSProperties = { maxHeight: "88dvh" };
+  if (closing) Object.assign(sheetStyle, { transform: "translateY(100%)", transition: "transform 0.3s cubic-bezier(0.4,0,1,1)" });
+  else if (entered) Object.assign(sheetStyle, { transform: `translateY(${dragY}px)`, transition: dragging ? "none" : "transform 0.3s cubic-bezier(0.16,1,0.3,1)" });
+
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center" onClick={requestClose}>
-      <div className={`absolute inset-0 ${closing ? "fade-out" : "fade-in"}`} style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(2px)" }} />
+      <div className={`absolute inset-0 ${backdropClass}`} style={backdropStyle} />
       <div
-        className={`glass-strong relative w-full max-w-md rounded-t-[32px] p-6 pb-[max(env(safe-area-inset-bottom),24px)] ${closing ? "sheet-down" : "sheet-up"} flex flex-col`}
-        style={{ maxHeight: "88dvh" }}
+        className={`glass-strong relative w-full max-w-md rounded-t-[32px] px-6 pt-3 pb-[max(env(safe-area-inset-bottom),24px)] flex flex-col ${sheetClass}`}
+        style={sheetStyle}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="w-10 h-1 rounded-full mx-auto mb-5 flex-shrink-0" style={{ background: "rgba(255,255,255,0.2)" }} />
-        <div className="flex items-center gap-2 mb-3 flex-shrink-0">
-          <span style={{ color: "var(--p-cal)" }}><SparkIcon width={20} height={20} /></span>
-          <h3 className="text-lg font-bold">What should I eat?</h3>
-        </div>
-        <div className="flex gap-1.5 mb-4 flex-wrap flex-shrink-0">
-          <Pill label={`${Math.round(remaining.calories)} kcal left`} c="var(--p-cal)" />
-          <Pill label={`${Math.round(remaining.protein)}g protein`} c="var(--p-protein)" />
+        {/* draggable header — grab handle + title */}
+        <div
+          className="flex-shrink-0 cursor-grab active:cursor-grabbing"
+          style={{ touchAction: "none" }}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          <div className="w-10 h-1.5 rounded-full mx-auto mb-4" style={{ background: "rgba(255,255,255,0.28)" }} />
+          <div className="flex items-center gap-2 mb-4">
+            <span style={{ color: "var(--p-cal)" }}><SparkIcon width={20} height={20} /></span>
+            <h3 className="text-lg font-bold">What should I eat?</h3>
+          </div>
         </div>
 
-        <div className="overflow-y-auto -mx-1 px-1">
+        {/* adjustable budget (ask phase only) */}
+        {phase === "ask" && (
+          <div className="glass card p-3.5 mb-4 flex-shrink-0">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="label !text-[10px]">This meal&apos;s budget</p>
+                <p className="text-xs text-[var(--muted)] mt-1 tabular">
+                  ≈ <span style={{ color: "var(--p-protein)" }}>{scaled.protein}g P</span> · {scaled.carbs}g C · {scaled.fat}g F
+                </p>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button onClick={() => setBudget((b) => Math.max(50, b - 50))} className="w-9 h-9 rounded-xl btn-ghost flex items-center justify-center text-lg pressable" aria-label="Less">−</button>
+                <div className="text-center w-[58px]">
+                  <span className="text-xl font-bold tabular leading-none">{budget}</span>
+                  <span className="text-[10px] text-[var(--muted)] block">kcal</span>
+                </div>
+                <button onClick={() => setBudget((b) => Math.min(2000, b + 50))} className="w-9 h-9 rounded-xl flex items-center justify-center text-lg font-bold pressable" style={{ background: "var(--p-cal)", color: "#0a0a0a" }} aria-label="More">+</button>
+              </div>
+            </div>
+            {baseCal > 0 && budget !== baseCal && (
+              <button onClick={() => setBudget(baseCal)} className="text-[11px] text-[var(--muted)] underline mt-2 pressable">
+                Use all {baseCal} kcal left today
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="overflow-y-auto -mx-1 px-1" style={{ overscrollBehavior: "contain" }}>
           {phase === "ask" && (
             <div className="rise">
-              <p className="text-sm text-[var(--muted)] mb-3">What are you in the mood for? Tap one and I&apos;ll build a recipe that fits what&apos;s left.</p>
+              <p className="text-sm text-[var(--muted)] mb-3">What are you in the mood for? Tap one and I&apos;ll build a recipe for that budget.</p>
               <div className="flex flex-wrap gap-2">
                 {CRAVINGS.map((c) => (
                   <button key={c} onClick={() => { setCraving(c === "Surprise me" ? "" : c); ask(c); }} className="chip pressable !py-2 !px-3.5" style={{ color: "var(--fg)" }}>
