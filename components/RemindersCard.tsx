@@ -3,12 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Bell, CheckIcon } from "@/components/Icons";
 
-type MealKey = "breakfast" | "lunch" | "dinner";
-type Reminders = { enabled: boolean; times: Record<MealKey, string> };
+type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner";
+type Reminders = { enabled: boolean; times: Record<ReminderKey, string> };
 
 const KEY = "cut.reminders.v1";
-const DEFAULTS: Reminders = { enabled: false, times: { breakfast: "08:30", lunch: "12:30", dinner: "19:00" } };
-const MEALS: { key: MealKey; label: string; copy: string }[] = [
+const DEFAULTS: Reminders = {
+  enabled: false,
+  times: { weight: "07:30", breakfast: "08:30", lunch: "12:30", dinner: "19:00" },
+};
+const ITEMS: { key: ReminderKey; label: string; copy: string }[] = [
+  { key: "weight", label: "Weigh-in", copy: "Step on the scale and log today's weight ⚖️" },
   { key: "breakfast", label: "Breakfast", copy: "Log your breakfast 🍳" },
   { key: "lunch", label: "Lunch", copy: "Lunch time — don't forget to log it 🥗" },
   { key: "dinner", label: "Dinner", copy: "Log dinner to close out your day 🍽️" },
@@ -58,7 +62,7 @@ export default function RemindersCard() {
     timers.current = [];
     if (!r.enabled || perm !== "granted") return;
 
-    for (const { key, copy } of MEALS) {
+    for (const { key, copy } of ITEMS) {
       const time = r.times[key];
       if (!time) continue;
       const arm = (delay: number) => {
@@ -119,8 +123,8 @@ export default function RemindersCard() {
             <Bell width={18} height={18} />
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-semibold">Meal reminders</p>
-            <p className="text-xs text-[var(--muted)]">A gentle nudge to log each meal</p>
+            <p className="text-sm font-semibold">Reminders</p>
+            <p className="text-xs text-[var(--muted)]">Nudges to log meals & your weight</p>
           </div>
         </div>
         {!unsupported && (
@@ -142,7 +146,7 @@ export default function RemindersCard() {
 
       {r.enabled && perm === "granted" && (
         <div className="mt-4 flex flex-col gap-2.5 rise">
-          {MEALS.map(({ key, label }) => (
+          {ITEMS.map(({ key, label }) => (
             <label key={key} className="flex items-center justify-between gap-3">
               <span className="text-sm">{label}</span>
               <input
