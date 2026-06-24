@@ -29,13 +29,13 @@ export async function GET() {
                ROW_NUMBER() OVER (PARTITION BY lower(name) ORDER BY created_at DESC) AS rn
         FROM food_logs
         WHERE user_id = ${userId}
-          AND created_at > now() - interval '30 days'
+          AND created_at > now() - interval '14 days'
       )
       SELECT name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium,
              1.0 AS confidence, count::int AS count
       FROM recent
       WHERE rn = 1
-        AND (count >= 2 OR last_at > now() - interval '10 days')
+        AND (count >= 2 OR last_at > now() - interval '5 days')
       ORDER BY last_at DESC
       LIMIT 24`;
 
@@ -49,7 +49,7 @@ export async function GET() {
         FROM food_logs
         WHERE user_id = ${userId}
           AND group_id IS NOT NULL
-          AND created_at > now() - interval '60 days'
+          AND created_at > now() - interval '30 days'
         GROUP BY group_id
         HAVING COUNT(*) >= 2
       ),
