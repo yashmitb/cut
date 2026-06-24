@@ -75,10 +75,28 @@ export default function RemindersCard() {
     return () => { timers.current.forEach(clearTimeout); timers.current = []; };
   }, [r, perm, hydrated]);
 
+  // Safari (and old browsers) implement requestPermission with a callback and
+  // resolve the promise to `undefined`. Support both, then trust the canonical
+  // Notification.permission value rather than the return.
+  function requestPermissionCompat(): Promise<NotificationPermission> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = () => { if (!settled) { settled = true; resolve(Notification.permission); } };
+      try {
+        const maybe = Notification.requestPermission(done);
+        if (maybe && typeof (maybe as Promise<NotificationPermission>).then === "function") {
+          (maybe as Promise<NotificationPermission>).then(done, done);
+        }
+      } catch {
+        done();
+      }
+    });
+  }
+
   async function enable() {
     if (!("Notification" in window)) return;
-    let p = Notification.permission;
-    if (p !== "granted") p = await Notification.requestPermission();
+    if (Notification.permission !== "granted") await requestPermissionCompat();
+    const p = Notification.permission; // authoritative, post-prompt
     setPerm(p);
     if (p === "granted") setR((x) => ({ ...x, enabled: true }));
   }
