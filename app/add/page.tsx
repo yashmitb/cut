@@ -55,8 +55,10 @@ function AddInner() {
   const [error, setError] = useState<string | null>(null);
 
   const [recent, setRecent] = useState<(FoodItem & { count?: number })[]>([]);
+  const [combos, setCombos] = useState<{ group_label: string; calories: number; items: FoodItem[] }[]>([]);
   const [quickAdded, setQuickAdded] = useState(0);
   const [justAdded, setJustAdded] = useState<number | null>(null);
+  const [justAddedCombo, setJustAddedCombo] = useState<number | null>(null);
   const [addedCounts, setAddedCounts] = useState<Record<number, number>>({});
   const [showAllRecent, setShowAllRecent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -72,7 +74,7 @@ function AddInner() {
   }, [chat]);
 
   useEffect(() => {
-    api.getRecent().then(({ items }) => setRecent(items)).catch(() => {});
+    api.getRecent().then(({ items, combos }) => { setRecent(items); setCombos(combos || []); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -129,6 +131,21 @@ function AddInner() {
       setJustAdded(idx);
       setToast(`Added ${item.name} → ${MEAL_META[meal].label}`);
       setTimeout(() => setJustAdded((c) => (c === idx ? null : c)), 1100);
+    } catch (e) {
+      if (!isCancel(e)) setError((e as Error).message);
+    }
+  }
+
+  async function quickAddCombo(combo: { group_label: string; items: FoodItem[] }, idx: number) {
+    try {
+      await api.addItems(date, combo.items, "quick", meal, {
+        group_id: crypto.randomUUID(),
+        group_label: combo.group_label,
+      });
+      setQuickAdded((n) => n + 1);
+      setJustAddedCombo(idx);
+      setToast(`Added ${combo.group_label} → ${MEAL_META[meal].label}`);
+      setTimeout(() => setJustAddedCombo((c) => (c === idx ? null : c)), 1100);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
     }
@@ -227,6 +244,36 @@ function AddInner() {
       {/* ------- INPUT STAGE ------- */}
       {stage === "input" && (
         <div className="flex-1 flex flex-col gap-4 pb-8 rise">
+          {combos.length > 0 && (
+            <div>
+              <p className="text-xs text-[var(--faint)] uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
+                <Layers width={13} height={13} /> Your combos · tap to log the whole thing
+              </p>
+              <div className="flex flex-col gap-2">
+                {combos.map((c, i) => {
+                  const flash = justAddedCombo === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => quickAddCombo(c, i)}
+                      className="glass card flex items-center gap-3 p-3 pressable text-left transition-transform"
+                      style={flash ? { borderColor: "rgba(181,232,201,0.5)", background: "rgba(181,232,201,0.12)", transform: "scale(1.01)" } : undefined}
+                    >
+                      <span className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: "rgba(201,184,240,0.16)", color: "var(--p-cal)" }}>
+                        {flash ? <CheckIcon width={15} height={15} style={{ color: "var(--p-fiber)" }} /> : <Layers width={15} height={15} />}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-semibold text-sm truncate">{flash ? "Added!" : c.group_label}</span>
+                        <span className="block text-xs text-[var(--muted)] truncate">{c.items.map((it) => it.name).join(" · ")}</span>
+                      </span>
+                      <span className="text-sm font-bold tabular flex-shrink-0" style={{ color: "var(--p-cal)" }}>{Math.round(c.calories)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {recent.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2 px-1">
