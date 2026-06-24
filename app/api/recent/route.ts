@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
-import type { FoodItem } from "@/lib/types";
+import type { FoodItem, Favorite } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +19,12 @@ export async function GET() {
     await ensureSchema();
     const userId = await getUserId();
     if (!userId) return unauthorized();
+
+    // --- favorites: pinned foods the user explicitly starred ---
+    const favorites = await sql<Favorite[]>`
+      SELECT name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium
+      FROM favorites WHERE user_id = ${userId} ORDER BY created_at DESC`;
+    const favKeys = new Set(favorites.map((f) => f.name.toLowerCase()));
 
     // --- recent individual items, recency-ranked, stale randoms removed ---
     const items = await sql<(FoodItem & { count: number })[]>`
@@ -89,7 +95,10 @@ export async function GET() {
         .filter((c) => c.items.length >= 2);
     }
 
-    return NextResponse.json({ items, combos });
+    // flag which recent items are already favorited (for the star toggle UI)
+    const itemsFlagged = items.map((it) => ({ ...it, fav: favKeys.has(it.name.toLowerCase()) }));
+
+    return NextResponse.json({ items: itemsFlagged, combos, favorites });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
   }

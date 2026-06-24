@@ -8,9 +8,11 @@ import MacroBar from "@/components/MacroBar";
 import LogItem from "@/components/LogItem";
 import LogGroup from "@/components/LogGroup";
 import AppLoader from "@/components/AppLoader";
+import Celebrate from "@/components/Celebrate";
 import {
   AskIcon,
   CameraIcon,
+  CheckIcon,
   ChevronLeft,
   ChevronRight,
   PlusIcon,
@@ -21,7 +23,7 @@ import { api } from "@/lib/api";
 import { sumTotals, relativeDay } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
-import type { FoodLog, Profile } from "@/lib/types";
+import type { DayTotals, FoodLog, GoalType, Profile } from "@/lib/types";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -77,6 +79,7 @@ function TodayInner() {
   const [date, setDate] = useState(initialDate);
   const [items, setItems] = useState<FoodLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [celebrate, setCelebrate] = useState(false);
 
   const loadDay = useCallback(async (d: string) => {
     const { items } = await api.getDay(d);
@@ -113,6 +116,20 @@ function TodayInner() {
       console.error(e);
     }
   }
+
+  // celebrate hitting the protein target — the one number that matters most on a
+  // cut. Fires at most once per day per session so it's a treat, not a nag.
+  useEffect(() => {
+    if (!profile || date !== today) return;
+    const protein = items.reduce((a, i) => a + (i.protein || 0), 0);
+    if (protein <= 0 || protein < profile.target_protein * 0.97) return;
+    const key = `cut.celebrated.${date}`;
+    try {
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch { /* sessionStorage may be unavailable */ }
+    setCelebrate(true);
+  }, [items, profile, date, today]);
 
   if (loading) return <LoadingToday />;
   if (!profile) return null;
@@ -170,6 +187,9 @@ function TodayInner() {
         <MacroBar label="Fiber" value={t.fiber} target={profile.target_fiber} color="var(--p-fiber)" />
       </section>
 
+      {/* Daily recap — qualitative scorecard once anything's logged */}
+      {items.length > 0 && <RecapCard totals={t} profile={profile} goal={profile.goal_type} isToday={isToday} />}
+
       {/* AI coach suggestion */}
       <Link
         href="/eat"
@@ -206,13 +226,19 @@ function TodayInner() {
         </div>
 
         {items.length === 0 ? (
-          <Link href={`/add?date=${date}`} className="glass card flex flex-col items-center justify-center py-10 px-6 text-center pressable">
-            <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3" style={{ background: "rgba(201,184,240,0.14)", color: "var(--p-cal)" }}>
+          <div className="glass card flex flex-col items-center justify-center py-10 px-6 text-center pop">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mb-3 halo" style={{ background: "rgba(201,184,240,0.14)", color: "var(--p-cal)" }}>
               <CameraIcon width={26} height={26} />
             </div>
             <p className="font-semibold">{isToday ? "Snap your first meal" : "Nothing logged this day"}</p>
-            <p className="text-sm text-[var(--muted)] mt-1">Tap to photograph food or describe it — AI logs the macros.</p>
-          </Link>
+            <p className="text-sm text-[var(--muted)] mt-1 mb-4 max-w-[16rem]">
+              {isToday ? "Photograph food or just describe it — AI logs the macros for you." : "Copy a past day or add what you ate — it still counts toward your trends."}
+            </p>
+            <div className="flex gap-2 w-full max-w-[16rem]">
+              <Link href={`/add?date=${date}`} className="btn btn-primary flex-1"><CameraIcon width={16} height={16} /> Add food</Link>
+              <Link href={`/add?date=${date}&mode=text`} className="btn btn-ghost flex-1">Describe it</Link>
+            </div>
+          </div>
         ) : (
           <div className="flex flex-col gap-4">
             {grouped.map(({ meal, rows }, gi) => {
@@ -247,7 +273,46 @@ function TodayInner() {
         )}
       </section>
 
+      <Celebrate show={celebrate} onDone={() => setCelebrate(false)} />
     </main>
+  );
+}
+
+// Goal-aware "did I have a good day" scorecard.
+function RecapCard({ totals, profile, goal, isToday }: { totals: DayTotals; profile: Profile; goal: GoalType; isToday: boolean }) {
+  const calRatio = profile.target_calories ? totals.calories / profile.target_calories : 0;
+  const proteinHit = totals.protein >= profile.target_protein * 0.97;
+  const fiberHit = totals.fiber >= profile.target_fiber * 0.9;
+  // "calories good" depends on the goal direction
+  const calGood =
+    goal === "gain" ? calRatio >= 0.97 && calRatio <= 1.12
+      : goal === "maintain" ? calRatio >= 0.92 && calRatio <= 1.08
+        : calRatio > 0 && calRatio <= 1.03;
+  const score = [calGood, proteinHit, fiberHit].filter(Boolean).length;
+
+  const headline =
+    !isToday ? (score === 3 ? "A textbook day." : score === 2 ? "A solid day." : "Logged — every day counts.")
+      : score === 3 ? "Perfect day — you nailed it."
+        : proteinHit && !calGood ? (calRatio > 1.03 ? "Protein locked in — ease off the calories." : "Protein locked in. Keep going.")
+          : !proteinHit && calGood ? "On calories — now chase that protein."
+            : score === 0 ? "Early in the day — keep logging." : "Nice progress so far.";
+
+  const Chip = ({ on, label }: { on: boolean; label: string }) => (
+    <span className="chip" style={{ color: on ? "var(--p-fiber)" : "var(--faint)", borderColor: on ? "rgba(181,232,201,0.4)" : "var(--line)", background: on ? "rgba(181,232,201,0.1)" : "transparent" }}>
+      {on ? <CheckIcon width={12} height={12} /> : <span className="w-3 h-3 rounded-full inline-block" style={{ border: "1.5px solid var(--faint)" }} />}
+      {label}
+    </span>
+  );
+
+  return (
+    <section className="glass card p-4 mb-3 rise rise-2" aria-label="Daily recap">
+      <p className="text-sm font-semibold mb-2.5">{headline}</p>
+      <div className="flex flex-wrap gap-2">
+        <Chip on={calGood} label={goal === "gain" ? "Calories met" : goal === "maintain" ? "On maintenance" : "Within calories"} />
+        <Chip on={proteinHit} label="Protein" />
+        <Chip on={fiberHit} label="Fiber" />
+      </div>
+    </section>
   );
 }
 

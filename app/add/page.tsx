@@ -8,22 +8,48 @@ import { fileToScaledDataUrl } from "@/lib/image";
 import { sumTotals } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
 import { MEAL_META, MEAL_ORDER, mealForHour } from "@/lib/types";
-import type { FoodItem, MealType } from "@/lib/types";
+import type { FoodItem, Favorite, MealType } from "@/lib/types";
 import {
   CameraIcon,
   CheckIcon,
   ChevronLeft,
+  CopyIcon,
   ImageIcon,
   Layers,
   PlusIcon,
   SendIcon,
   SparkIcon,
+  StarIcon,
+  StarFilledIcon,
   TrashIcon,
   WarnIcon,
 } from "@/components/Icons";
 
 type ChatMsg = { role: "user" | "model"; text: string };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function shiftDate(date: string, delta: number): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + delta);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+// scale a food item's macros by a portion multiplier (½, 1, 1½, 2…)
+function scaleItem(it: FoodItem, m: number): FoodItem {
+  if (m === 1) return it;
+  const r = (n: number) => Math.round((n || 0) * m);
+  const baseQty = it.quantity?.trim();
+  return {
+    ...it,
+    calories: r(it.calories), protein: r(it.protein), carbs: r(it.carbs),
+    fat: r(it.fat), fiber: r(it.fiber), sugar: r(it.sugar), sodium: r(it.sodium),
+    quantity: `${m}× ${baseQty || "serving"}`,
+  };
+}
+
+const PORTIONS = [0.5, 1, 1.5, 2];
+const portionLabel = (m: number) => (m === 0.5 ? "½" : m === 1.5 ? "1½" : String(m));
 
 export default function AddPage() {
   return (
@@ -54,12 +80,15 @@ function AddInner() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [recent, setRecent] = useState<(FoodItem & { count?: number })[]>([]);
+  const [recent, setRecent] = useState<(FoodItem & { count?: number; fav?: boolean })[]>([]);
   const [combos, setCombos] = useState<{ group_label: string; calories: number; items: FoodItem[] }[]>([]);
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
+  const [portion, setPortion] = useState(1); // multiplier applied to one-tap logs
+  const [copying, setCopying] = useState(false);
   const [quickAdded, setQuickAdded] = useState(0);
-  const [justAdded, setJustAdded] = useState<number | null>(null);
+  const [justAdded, setJustAdded] = useState<string | null>(null);
   const [justAddedCombo, setJustAddedCombo] = useState<number | null>(null);
-  const [addedCounts, setAddedCounts] = useState<Record<number, number>>({});
+  const [addedCounts, setAddedCounts] = useState<Record<string, number>>({});
   const [showAllRecent, setShowAllRecent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [groupOn, setGroupOn] = useState(false);
@@ -74,7 +103,9 @@ function AddInner() {
   }, [chat]);
 
   useEffect(() => {
-    api.getRecent().then(({ items, combos }) => { setRecent(items); setCombos(combos || []); }).catch(() => {});
+    api.getRecent().then(({ items, combos, favorites }) => {
+      setRecent(items); setCombos(combos || []); setFavorites(favorites || []);
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -123,14 +154,15 @@ function AddInner() {
     setStage("review");
   }
 
-  async function quickAdd(item: FoodItem, idx: number) {
+  async function quickAdd(item: FoodItem, key: string) {
     try {
-      await api.addItems(date, [item], "quick", meal);
+      const scaled = scaleItem(item, portion);
+      await api.addItems(date, [scaled], "quick", meal);
       setQuickAdded((n) => n + 1);
-      setAddedCounts((m) => ({ ...m, [idx]: (m[idx] || 0) + 1 }));
-      setJustAdded(idx);
-      setToast(`Added ${item.name} → ${MEAL_META[meal].label}`);
-      setTimeout(() => setJustAdded((c) => (c === idx ? null : c)), 1100);
+      setAddedCounts((m) => ({ ...m, [key]: (m[key] || 0) + 1 }));
+      setJustAdded(key);
+      setToast(`Added ${portion !== 1 ? portionLabel(portion) + "× " : ""}${item.name} → ${MEAL_META[meal].label}`);
+      setTimeout(() => setJustAdded((c) => (c === key ? null : c)), 1100);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
     }
@@ -149,6 +181,75 @@ function AddInner() {
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
     }
+  }
+
+  async function toggleFav(item: FoodItem) {
+    const key = item.name.toLowerCase();
+    const isFav = favorites.some((f) => f.name.toLowerCase() === key);
+    // optimistic
+    setFavorites((fs) => (isFav ? fs.filter((f) => f.name.toLowerCase() !== key) : [{ ...item }, ...fs]));
+    setRecent((rs) => rs.map((r) => (r.name.toLowerCase() === key ? { ...r, fav: !isFav } : r)));
+    try {
+      const { favorites: next } = await api.toggleFavorite(item, !isFav);
+      setFavorites(next);
+      setToast(isFav ? `Unpinned ${item.name}` : `Pinned ${item.name} ★`);
+    } catch (e) {
+      if (!isCancel(e)) setError((e as Error).message);
+      // reload truth on failure
+      api.getRecent().then(({ items, favorites }) => { setRecent(items); setFavorites(favorites || []); }).catch(() => {});
+    }
+  }
+
+  async function copyMeal() {
+    setCopying(true);
+    setError(null);
+    try {
+      const { copied } = await api.copyDay(shiftDate(date, -1), date, meal);
+      setQuickAdded((n) => n + copied);
+      setToast(`Copied ${copied} item${copied === 1 ? "" : "s"} from yesterday → ${MEAL_META[meal].label}`);
+    } catch (e) {
+      if (!isCancel(e)) setToast(`Nothing logged for yesterday's ${MEAL_META[meal].label.toLowerCase()}`);
+    } finally {
+      setCopying(false);
+    }
+  }
+
+  const isFav = (name: string) => favorites.some((f) => f.name.toLowerCase() === name.toLowerCase());
+
+  // a tappable food pill (left = log it, right = pin/unpin). Used by favorites + recents.
+  function pill(item: FoodItem, fav: boolean) {
+    const key = item.name.toLowerCase();
+    const cnt = addedCounts[key] || 0;
+    const flash = justAdded === key;
+    return (
+      <div
+        key={key}
+        className="chip !p-0 overflow-hidden flex items-stretch transition-transform"
+        style={
+          flash
+            ? { color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.5)", background: "rgba(181,232,201,0.16)", transform: "scale(1.05)" }
+            : cnt > 0
+              ? { color: "var(--fg)", borderColor: "rgba(181,232,201,0.35)" }
+              : { color: "var(--fg)" }
+        }
+      >
+        <button onClick={() => quickAdd(item, key)} className="flex items-center gap-1.5 py-1.5 pl-3 pr-2 pressable" aria-label={`Log ${portion !== 1 ? portionLabel(portion) + "× " : ""}${item.name}`}>
+          {flash || cnt > 0 ? <CheckIcon width={12} height={12} style={{ color: "var(--p-fiber)" }} /> : <PlusIcon width={12} height={12} />}
+          <span className="max-w-[140px] truncate">{flash ? "Added!" : item.name}</span>
+          {!flash && <span className="text-[var(--faint)] tabular">{Math.round((item.calories || 0) * portion)}</span>}
+          {cnt > 0 && !flash && <span className="text-[10px] font-bold" style={{ color: "var(--p-fiber)" }}>×{cnt}</span>}
+        </button>
+        <button
+          onClick={() => toggleFav(item)}
+          className="px-2 flex items-center pressable"
+          style={{ borderLeft: "1px solid var(--line)" }}
+          aria-label={fav ? `Unpin ${item.name} from favorites` : `Pin ${item.name} to favorites`}
+          aria-pressed={fav}
+        >
+          {fav ? <StarFilledIcon width={13} height={13} style={{ color: "var(--p-fat)" }} /> : <StarIcon width={13} height={13} style={{ color: "var(--faint)" }} />}
+        </button>
+      </div>
+    );
   }
 
   async function sendChat() {
@@ -244,6 +345,34 @@ function AddInner() {
       {/* ------- INPUT STAGE ------- */}
       {stage === "input" && (
         <div className="flex-1 flex flex-col gap-4 pb-8 rise">
+          {/* quick tools — portion multiplier + copy yesterday */}
+          {(recent.length > 0 || favorites.length > 0) && (
+            <div className="flex items-center gap-2">
+              <div className="seg flex-1" role="group" aria-label="Portion size for one-tap logging">
+                {PORTIONS.map((p) => (
+                  <button key={p} type="button" className="seg-item !text-xs" data-on={portion === p} aria-pressed={portion === p} onClick={() => setPortion(p)}>
+                    {portionLabel(p)}×
+                  </button>
+                ))}
+              </div>
+              <button onClick={copyMeal} disabled={copying} className="btn btn-ghost !py-2.5 !px-3 !text-xs flex-shrink-0" aria-label={`Copy yesterday's ${MEAL_META[meal].label}`}>
+                <CopyIcon width={14} height={14} /> {copying ? "Copying…" : "Copy yesterday"}
+              </button>
+            </div>
+          )}
+
+          {/* Favorites — pinned, always first */}
+          {favorites.length > 0 && (
+            <div>
+              <p className="text-xs text-[var(--faint)] uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
+                <StarFilledIcon width={12} height={12} style={{ color: "var(--p-fat)" }} /> Favorites
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {favorites.map((fav) => pill({ ...fav, confidence: 1 }, true))}
+              </div>
+            </div>
+          )}
+
           {combos.length > 0 && (
             <div>
               <p className="text-xs text-[var(--faint)] uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
@@ -277,7 +406,7 @@ function AddInner() {
           {recent.length > 0 && (
             <div>
               <div className="flex items-center justify-between mb-2 px-1">
-                <p className="text-xs text-[var(--faint)] uppercase tracking-wider">Quick add · tap to log instantly</p>
+                <p className="text-xs text-[var(--faint)] uppercase tracking-wider">Quick add{portion !== 1 ? ` · ${portionLabel(portion)}× portion` : " · tap to log instantly"}</p>
                 {recent.length > 8 && (
                   <button onClick={() => setShowAllRecent((s) => !s)} className="text-[11px] text-[var(--muted)] pressable">
                     {showAllRecent ? "Show less" : `+${recent.length - 8} more`}
@@ -285,29 +414,7 @@ function AddInner() {
                 )}
               </div>
               <div className="flex flex-wrap gap-2">
-                {(showAllRecent ? recent : recent.slice(0, 8)).map((it, i) => {
-                  const cnt = addedCounts[i] || 0;
-                  const flash = justAdded === i;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => quickAdd(it, i)}
-                      className="chip pressable !py-1.5 !px-3 transition-transform"
-                      style={
-                        flash
-                          ? { color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.5)", background: "rgba(181,232,201,0.16)", transform: "scale(1.05)" }
-                          : cnt > 0
-                            ? { color: "var(--fg)", borderColor: "rgba(181,232,201,0.35)" }
-                            : { color: "var(--fg)" }
-                      }
-                    >
-                      {flash || cnt > 0 ? <CheckIcon width={12} height={12} style={{ color: "var(--p-fiber)" }} /> : <PlusIcon width={12} height={12} />}
-                      <span className="max-w-[150px] truncate">{flash ? "Added!" : it.name}</span>
-                      {!flash && <span className="text-[var(--faint)] tabular">{Math.round(it.calories)}</span>}
-                      {cnt > 0 && !flash && <span className="text-[10px] font-bold" style={{ color: "var(--p-fiber)" }}>×{cnt}</span>}
-                    </button>
-                  );
-                })}
+                {(showAllRecent ? recent : recent.slice(0, 8)).map((it) => pill(it, it.fav ?? isFav(it.name)))}
               </div>
             </div>
           )}

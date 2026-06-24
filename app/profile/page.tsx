@@ -5,6 +5,7 @@ import { api } from "@/lib/api";
 import { isCancel } from "@/lib/retry";
 import {
   ACTIVITY_LABELS,
+  GAIN_RATE_LABELS,
   RATE_LABELS,
   cmToIn,
   computeTargets,
@@ -14,11 +15,14 @@ import {
   todayLocal,
   type TargetInput,
 } from "@/lib/nutrition";
-import type { Activity, Profile, Rate, Sex, Units } from "@/lib/types";
-import { CheckIcon, ScaleIcon, WarnIcon } from "@/components/Icons";
+import { GOAL_META, type Activity, type GoalType, type Profile, type Rate, type Sex, type Units } from "@/lib/types";
+import { CheckIcon, DownloadIcon, ScaleIcon, WarnIcon } from "@/components/Icons";
 import ApiKeyCard from "@/components/ApiKeyCard";
 import AccountCard from "@/components/AccountCard";
 import AppLoader from "@/components/AppLoader";
+import RemindersCard from "@/components/RemindersCard";
+
+const GOAL_TYPES: GoalType[] = ["cut", "maintain", "gain"];
 
 export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -41,6 +45,7 @@ export default function ProfilePage() {
     goal: "",
     activity: "moderate" as Activity,
     rate: "moderate" as Rate,
+    goalType: "cut" as GoalType,
   });
   const set = (p: Partial<typeof f>) => setF((o) => ({ ...o, ...p }));
 
@@ -73,6 +78,7 @@ export default function ProfilePage() {
       goal: String(units === "metric" ? Math.round(p.goal_weight_kg * 10) / 10 : Math.round(kgToLb(p.goal_weight_kg) * 10) / 10),
       activity: p.activity,
       rate: p.rate,
+      goalType: p.goal_type ?? "cut",
     });
   }
 
@@ -82,7 +88,7 @@ export default function ProfilePage() {
     const weight_kg = f.units === "metric" ? Number(f.weight) : lbToKg(Number(f.weight));
     const goal_weight_kg = f.units === "metric" ? Number(f.goal) : lbToKg(Number(f.goal));
     if (!age || !height_cm || !weight_kg || !goal_weight_kg) return null;
-    return { age, sex: f.sex, height_cm, weight_kg, goal_weight_kg, activity: f.activity, rate: f.rate };
+    return { age, sex: f.sex, height_cm, weight_kg, goal_weight_kg, activity: f.activity, rate: f.rate, goal_type: f.goalType };
   }, [f]);
 
   const targets = useMemo(() => (metric ? computeTargets(metric) : null), [metric]);
@@ -152,8 +158,11 @@ export default function ProfilePage() {
           </div>
           <div className="flex justify-around mt-4 pt-4" style={{ borderTop: "1px solid var(--line)" }}>
             <Mini label="TDEE" v={`${targets.tdee}`} />
-            <Mini label="Deficit" v={`${targets.deficit}`} />
-            <Mini label="Per week" v={`${targets.projectedWeeklyKg.toFixed(2)}kg`} />
+            <Mini
+              label={targets.direction === "gain" ? "Surplus" : targets.direction === "loss" ? "Deficit" : "Balance"}
+              v={targets.direction === "none" ? "0" : `${targets.deficit}`}
+            />
+            <Mini label="Per week" v={targets.direction === "none" ? "—" : `${targets.projectedWeeklyKg.toFixed(2)}kg`} />
             <Mini label="To goal" v={targets.weeksToGoal ? `${targets.weeksToGoal}w` : "—"} />
           </div>
         </section>
@@ -175,6 +184,9 @@ export default function ProfilePage() {
           </button>
         </div>
       </section>
+
+      {/* meal reminders */}
+      <RemindersCard />
 
       {/* AI connection */}
       <ApiKeyCard />
@@ -204,6 +216,16 @@ export default function ProfilePage() {
           <div className="seg">
             {(["imperial", "metric"] as Units[]).map((u) => (
               <div key={u} className="seg-item !text-xs" data-on={f.units === u} onClick={() => set({ units: u })}>{u === "imperial" ? "lb / ft" : "kg / cm"}</div>
+            ))}
+          </div>
+        </Field>
+
+        <Field label="Goal">
+          <div className="seg" role="group" aria-label="Goal type">
+            {GOAL_TYPES.map((g) => (
+              <button key={g} type="button" className="seg-item !text-xs" data-on={f.goalType === g} aria-pressed={f.goalType === g} onClick={() => set({ goalType: g })}>
+                {GOAL_META[g].title}
+              </button>
             ))}
           </div>
         </Field>
@@ -238,20 +260,25 @@ export default function ProfilePage() {
           </select>
         </Field>
 
-        <Field label="Cut aggressiveness">
-          <div className="flex flex-col gap-2">
-            {(Object.keys(RATE_LABELS) as Rate[]).map((r) => (
-              <button key={r} onClick={() => set({ rate: r })} className="card p-3 flex items-center justify-between text-left pressable"
-                style={{ border: f.rate === r ? "1px solid rgba(201,184,240,0.5)" : "1px solid var(--line)", background: f.rate === r ? "rgba(201,184,240,0.08)" : "transparent" }}>
-                <div>
-                  <p className="text-sm font-semibold">{RATE_LABELS[r].title}</p>
-                  <p className="text-xs text-[var(--muted)]">{RATE_LABELS[r].sub}</p>
-                </div>
-                {f.rate === r && <span style={{ color: "var(--p-cal)" }}><CheckIcon width={16} height={16} /></span>}
-              </button>
-            ))}
-          </div>
-        </Field>
+        {f.goalType !== "maintain" && (
+          <Field label={f.goalType === "gain" ? "Bulk pace" : "Cut aggressiveness"}>
+            <div className="flex flex-col gap-2">
+              {(Object.keys(RATE_LABELS) as Rate[]).map((r) => {
+                const meta = f.goalType === "gain" ? GAIN_RATE_LABELS[r] : RATE_LABELS[r];
+                return (
+                  <button key={r} onClick={() => set({ rate: r })} className="card p-3 flex items-center justify-between text-left pressable"
+                    style={{ border: f.rate === r ? "1px solid rgba(201,184,240,0.5)" : "1px solid var(--line)", background: f.rate === r ? "rgba(201,184,240,0.08)" : "transparent" }}>
+                    <div>
+                      <p className="text-sm font-semibold">{meta.title}</p>
+                      <p className="text-xs text-[var(--muted)]">{meta.sub}</p>
+                    </div>
+                    {f.rate === r && <span style={{ color: "var(--p-cal)" }}><CheckIcon width={16} height={16} /></span>}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+        )}
 
         {targets && targets.warnings.length > 0 && (
           <div className="flex flex-col gap-2">
@@ -268,6 +295,17 @@ export default function ProfilePage() {
       <button className="btn btn-primary w-full" disabled={saving || !metric} onClick={save}>
         {saved ? <><CheckIcon width={18} height={18} /> Saved</> : saving ? "Saving…" : "Save & recalculate"}
       </button>
+
+      {/* export — download all your data as a spreadsheet */}
+      <a
+        href="/api/export"
+        download
+        className="btn btn-ghost w-full mt-3"
+        aria-label="Export all your data as a CSV file"
+      >
+        <DownloadIcon width={17} height={17} /> Export my data (CSV)
+      </a>
+      <p className="text-[11px] text-[var(--faint)] text-center mt-2">Every food log and weigh-in, as a spreadsheet. Yours to keep.</p>
     </main>
   );
 }

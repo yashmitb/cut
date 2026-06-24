@@ -1,6 +1,6 @@
 // Client-side fetch helpers. Every call auto-retries transient failures with a
 // visible countdown (see lib/retry) instead of surfacing a raw error.
-import type { Profile, FoodLog, WeightLog, FoodItem, AnalysisResult, MealType, DayTotals, MealSuggestion } from "./types";
+import type { Profile, FoodLog, WeightLog, FoodItem, Favorite, AnalysisResult, MealType, DayTotals, MealSuggestion } from "./types";
 import { ApiError, withRetry } from "./retry";
 
 const baseUrl = typeof window !== "undefined"
@@ -60,9 +60,14 @@ export const api = {
 
   getRecent: () =>
     call<{
-      items: (FoodItem & { count?: number })[];
+      items: (FoodItem & { count?: number; fav?: boolean })[];
       combos: { group_label: string; calories: number; items: FoodItem[] }[];
+      favorites: Favorite[];
     }>("Loading recents", "/api/recent"),
+  toggleFavorite: (item: FoodItem, on?: boolean) =>
+    call<{ favorites: Favorite[]; on: boolean }>("Updating favorites", "/api/favorites", post({ item, on })),
+  copyDay: (from: string, to: string, meal?: MealType) =>
+    call<{ items: FoodLog[]; copied: number }>("Copying day", "/api/copy", post({ from, to, meal })),
   suggest: (remaining: DayTotals, meal: MealType, craving: string) =>
     call<{ suggestion: MealSuggestion }>("Cooking up an idea", "/api/suggest", post({ ...remaining, meal, craving })),
 

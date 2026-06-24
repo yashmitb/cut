@@ -73,6 +73,7 @@ const SCHEMA_SQL = `
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  ALTER TABLE profile ADD COLUMN IF NOT EXISTS goal_type TEXT NOT NULL DEFAULT 'cut';
   CREATE TABLE IF NOT EXISTS food_logs (
     id          BIGSERIAL PRIMARY KEY,
     user_id     TEXT NOT NULL,
@@ -102,6 +103,21 @@ const SCHEMA_SQL = `
     weight_kg  REAL NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (user_id, log_date)
+  );
+  CREATE TABLE IF NOT EXISTS favorites (
+    user_id    TEXT NOT NULL,
+    name_key   TEXT NOT NULL,
+    name       TEXT NOT NULL,
+    quantity   TEXT NOT NULL DEFAULT '',
+    calories   REAL NOT NULL DEFAULT 0,
+    protein    REAL NOT NULL DEFAULT 0,
+    carbs      REAL NOT NULL DEFAULT 0,
+    fat        REAL NOT NULL DEFAULT 0,
+    fiber      REAL NOT NULL DEFAULT 0,
+    sugar      REAL NOT NULL DEFAULT 0,
+    sodium     REAL NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, name_key)
   );
   CREATE TABLE IF NOT EXISTS corrections (
     id         BIGSERIAL PRIMARY KEY,

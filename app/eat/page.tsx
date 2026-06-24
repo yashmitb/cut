@@ -7,7 +7,7 @@ import { isCancel } from "@/lib/retry";
 import { sumTotals } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
 import AppLoader from "@/components/AppLoader";
-import { BookOpen, CheckIcon, ChevronLeft, PlusIcon, Search, SparkIcon } from "@/components/Icons";
+import { BookOpen, CheckIcon, ChevronLeft, PlusIcon, Search, SparkIcon, Target } from "@/components/Icons";
 import type { MealType, MealSuggestion } from "@/lib/types";
 
 const CRAVINGS = ["High protein", "Something sweet", "Quick & easy", "Low calorie", "Comfort food", "Surprise me"];
@@ -92,6 +92,27 @@ export default function EatPage() {
     }
   }
 
+  // "Make it fit" — a meal engineered to land on the exact remaining macros.
+  async function askFit() {
+    if (!remaining) return;
+    setError(null);
+    setPhase("loading");
+    try {
+      const precise = {
+        calories: baseCal,
+        protein: Math.round(remaining.protein), carbs: Math.round(remaining.carbs),
+        fat: Math.round(remaining.fat), fiber: Math.round(remaining.fiber), sugar: 0, sodium: 0,
+      };
+      const hint = `Build a meal that lands as precisely as possible on the user's exact remaining macros for the day: ${precise.protein}g protein, ${precise.carbs}g carbs, ${precise.fat}g fat, about ${baseCal} kcal. Prioritise matching protein and total calories.`;
+      const { suggestion } = await api.suggest(precise, mealNow(), hint);
+      setSuggestion(suggestion);
+      setPhase("result");
+    } catch (e) {
+      if (!isCancel(e)) setError((e as Error).message);
+      setPhase("ask");
+    }
+  }
+
   async function logIt() {
     if (!suggestion) return;
     try {
@@ -146,6 +167,22 @@ export default function EatPage() {
             </button>
           )}
         </div>
+      )}
+
+      {phase === "ask" && baseCal > 0 && (
+        <button
+          onClick={askFit}
+          className="glass card w-full p-3.5 mb-4 flex items-center gap-3 rise rise-2 pressable drift text-left"
+          style={{ backgroundImage: "linear-gradient(120deg, rgba(181,232,201,0.14), rgba(168,208,240,0.05), rgba(181,232,201,0.14))" }}
+        >
+          <span className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(181,232,201,0.2)", color: "var(--p-fiber)" }}>
+            <Target width={18} height={18} />
+          </span>
+          <span>
+            <span className="block text-sm font-semibold">Make it fit</span>
+            <span className="block text-xs text-[var(--muted)]">A meal engineered to land on your exact remaining macros</span>
+          </span>
+        </button>
       )}
 
       {phase === "ask" && (

@@ -15,9 +15,10 @@ import {
 } from "recharts";
 import { api } from "@/lib/api";
 import { displayWeight, shortDate } from "@/lib/format";
-import { Flame, Sprout } from "@/components/Icons";
+import { computeTargets, estimateAdaptiveTDEE, smoothWeights } from "@/lib/nutrition";
+import { Flame, Sprout, SparkIcon } from "@/components/Icons";
 import AppLoader from "@/components/AppLoader";
-import type { Profile, Units } from "@/lib/types";
+import { GOAL_META, type Profile, type Units } from "@/lib/types";
 import type { DayRow } from "@/app/api/progress/route";
 
 const RANGES = [
@@ -76,13 +77,21 @@ export default function ProgressPage() {
   const maxProtein = Math.max(profile?.target_protein ?? 0, ...data.map((d) => d.protein), 50) * 1.12;
   const maxFiber = Math.max(profile?.target_fiber ?? 0, ...data.map((d) => d.fiber), 20) * 1.12;
 
-  const chartData = data.map((d) => ({
+  // adaptive metabolism + smoothed trend, derived from real logged data
+  const adaptive = useMemo(() => estimateAdaptiveTDEE(data), [data]);
+  const smooth = useMemo(() => smoothWeights(data, 7), [data]);
+  const formulaTDEE = useMemo(() => (profile ? computeTargets({ ...profile, goal_type: profile.goal_type }).tdee : null), [profile]);
+
+  const chartData = data.map((d, i) => ({
     ...d,
     label: shortDate(d.date),
     weightDisp: d.weight_kg != null ? displayWeight(d.weight_kg, units).value : null,
+    weightSmooth: smooth[i] != null ? displayWeight(smooth[i]!, units).value : null,
   }));
 
   const wChange = displayWeight(Math.abs(stats.weightChange), units);
+  const adaptiveWeekly = adaptive ? displayWeight(Math.abs(adaptive.weeklyKg), units) : null;
+  const goalVerb = profile ? GOAL_META[profile.goal_type].verb : "losing";
 
   return (
     <main className="px-4 pt-[max(env(safe-area-inset-top),20px)] pb-32">
@@ -112,6 +121,44 @@ export default function ProgressPage() {
         </div>
       </div>
 
+      {/* adaptive metabolism — learned from real intake vs. weight trend */}
+      <div className="glass card p-4 mb-3 rise rise-1" style={{ background: "linear-gradient(120deg, rgba(201,184,240,0.12), rgba(168,208,240,0.05))" }}>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: "rgba(201,184,240,0.18)", color: "var(--p-cal)" }}>
+            <SparkIcon width={15} height={15} />
+          </span>
+          <p className="text-sm font-semibold">Adaptive metabolism</p>
+        </div>
+        {adaptive ? (
+          <>
+            <div className="flex items-end gap-4">
+              <div>
+                <p className="text-3xl font-bold tabular leading-none">{adaptive.tdee}</p>
+                <p className="text-xs text-[var(--muted)] mt-1">real maintenance · kcal/day</p>
+              </div>
+              {adaptiveWeekly && (
+                <div className="ml-auto text-right">
+                  <p className="text-xl font-bold tabular leading-none" style={{ color: adaptive.weeklyKg <= 0 ? "var(--p-fiber)" : "var(--p-warn)" }}>
+                    {adaptive.weeklyKg <= 0 ? "−" : "+"}{adaptiveWeekly.value} {adaptiveWeekly.unit}
+                  </p>
+                  <p className="text-xs text-[var(--muted)] mt-1">per week · actual</p>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-[var(--muted)] mt-3 leading-relaxed">
+              Learned from {adaptive.loggedDays} logged days and your weight trend.
+              {formulaTDEE != null && Math.abs(adaptive.tdee - formulaTDEE) >= 80 && (
+                <> Your real burn is about <span className="font-semibold text-[var(--fg)]">{Math.abs(adaptive.tdee - formulaTDEE)} kcal {adaptive.tdee > formulaTDEE ? "higher" : "lower"}</span> than the formula estimate.</>
+              )}
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-[var(--muted)] leading-relaxed">
+            Keep logging food and weighing in. After about 10 logged days and 10 days of weigh-ins, Cut learns your <span className="text-[var(--fg)] font-medium">true maintenance calories</span> from how your weight actually moves — far more accurate than any formula.
+          </p>
+        )}
+      </div>
+
       {/* summary stats */}
       <div className="grid grid-cols-2 gap-3 mb-4 rise rise-1">
         <StatCard label="Avg calories" value={stats.avgCal.toString()} sub={profile ? `target ${profile.target_calories}` : ""} color="var(--p-cal)" />
@@ -119,8 +166,14 @@ export default function ProgressPage() {
         <StatCard
           label="Weight change"
           value={`${stats.weightChange <= 0 ? "−" : "+"}${wChange.value} ${wChange.unit}`}
-          sub={`over ${days} days`}
-          color={stats.weightChange <= 0 ? "var(--p-fiber)" : "var(--p-warn)"}
+          sub={`over ${days} days · ${goalVerb}`}
+          color={
+            !profile || profile.goal_type === "maintain"
+              ? "var(--p-carbs)"
+              : (profile.goal_type === "gain" ? stats.weightChange > 0 : stats.weightChange <= 0)
+                ? "var(--p-fiber)"
+                : "var(--p-warn)"
+          }
         />
         <StatCard label="On-target days" value={`${stats.adherence}%`} sub={`${stats.loggedDays} logged`} color="var(--p-carbs)" />
       </div>
@@ -154,17 +207,24 @@ export default function ProgressPage() {
             </ResponsiveContainer>
           </ChartCard>
 
-          {/* Weight */}
+          {/* Weight — raw readings (faint dots) + smoothed 7-day trend (bold line) */}
           <ChartCard title={`Weight trend (${units === "imperial" ? "lb" : "kg"})`} accent="var(--p-fiber)">
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={chartData} margin={{ top: 6, right: 8, left: -6, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke="rgba(255,255,255,0.05)" />
                 <XAxis dataKey="label" tick={axisTick} interval="preserveStartEnd" axisLine={false} tickLine={false} minTickGap={24} />
                 <YAxis tick={axisTick} axisLine={false} tickLine={false} width={46} domain={["dataMin - 1", "dataMax + 1"]} />
-                <Tooltip content={<GlassTip unit={units === "imperial" ? "lb" : "kg"} keyName="weightDisp" />} />
-                <Line type="monotone" dataKey="weightDisp" stroke="var(--p-fiber)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--p-fiber)" }} connectNulls />
+                <Tooltip content={<GlassTip unit={units === "imperial" ? "lb" : "kg"} />} />
+                {/* faint daily scatter */}
+                <Line type="monotone" dataKey="weightDisp" name="Daily" stroke="rgba(181,232,201,0.32)" strokeWidth={1} dot={{ r: 2, fill: "rgba(181,232,201,0.45)" }} connectNulls isAnimationActive={false} />
+                {/* bold smoothed trend */}
+                <Line type="monotone" dataKey="weightSmooth" name="7-day avg" stroke="var(--p-fiber)" strokeWidth={2.75} dot={false} connectNulls />
               </LineChart>
             </ResponsiveContainer>
+            <div className="flex items-center gap-4 mt-2 px-1">
+              <span className="flex items-center gap-1.5 text-[11px] text-[var(--muted)]"><span className="w-4 h-[3px] rounded-full" style={{ background: "var(--p-fiber)" }} /> 7-day average</span>
+              <span className="flex items-center gap-1.5 text-[11px] text-[var(--faint)]"><span className="w-1.5 h-1.5 rounded-full" style={{ background: "rgba(181,232,201,0.45)" }} /> daily weigh-in</span>
+            </div>
           </ChartCard>
 
           {/* Fiber */}
@@ -213,18 +273,21 @@ function ChartCard({ title, accent, children }: { title: string; accent: string;
 
 interface TipProps {
   active?: boolean;
-  payload?: { value: number; payload: { label: string } }[];
+  payload?: { value: number; name?: string; payload: { label: string } }[];
   unit?: string;
   keyName?: string;
 }
 function GlassTip({ active, payload, unit }: TipProps) {
   if (!active || !payload?.length) return null;
-  const v = payload[0].value;
-  if (v == null) return null;
+  // with multiple series (e.g. weight: daily + 7-day avg), prefer a non-null value,
+  // favouring the smoothed average for a calmer read.
+  const pick = payload.find((p) => /avg/i.test(p.name ?? "") && p.value != null) ?? payload.find((p) => p.value != null);
+  if (!pick || pick.value == null) return null;
+  const showName = payload.length > 1 && pick.name;
   return (
     <div className="glass-strong rounded-xl px-3 py-2 text-xs">
-      <p className="text-[var(--muted)]">{payload[0].payload.label}</p>
-      <p className="font-bold tabular">{Math.round(Number(v))} {unit}</p>
+      <p className="text-[var(--muted)]">{pick.payload.label}{showName ? ` · ${pick.name}` : ""}</p>
+      <p className="font-bold tabular">{Math.round(Number(pick.value))} {unit}</p>
     </div>
   );
 }

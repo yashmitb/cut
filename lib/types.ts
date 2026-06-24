@@ -4,6 +4,14 @@ export type Sex = "male" | "female";
 export type Activity = "sedentary" | "light" | "moderate" | "very" | "extra";
 export type Rate = "mild" | "moderate" | "aggressive";
 export type Units = "metric" | "imperial";
+/** What the plan is built for. "cut" = lose fat, "maintain" = hold, "gain" = lean bulk. */
+export type GoalType = "cut" | "maintain" | "gain";
+
+export const GOAL_META: Record<GoalType, { title: string; sub: string; verb: string }> = {
+  cut: { title: "Cut", sub: "Lose fat, keep muscle", verb: "losing" },
+  maintain: { title: "Maintain", sub: "Hold your weight", verb: "holding" },
+  gain: { title: "Lean bulk", sub: "Build muscle slowly", verb: "gaining" },
+};
 
 export interface Profile {
   id: string;
@@ -15,6 +23,7 @@ export interface Profile {
   goal_weight_kg: number;
   activity: Activity;
   rate: Rate;
+  goal_type: GoalType;
   units: Units;
   // computed targets (stored so the daily view is instant)
   target_calories: number;
@@ -89,6 +98,19 @@ export interface WeightLog {
   log_date: string;
   weight_kg: number;
   created_at: string;
+}
+
+/** A pinned food the user can re-log in one tap. Stores the macros so it's instant. */
+export interface Favorite {
+  name: string;
+  quantity: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugar: number;
+  sodium: number;
 }
 
 /** Structured response the model returns for an image/text analysis. */

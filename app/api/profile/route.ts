@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
 import { computeTargets, todayLocal } from "@/lib/nutrition";
-import type { Activity, Profile, Rate, Sex, Units } from "@/lib/types";
+import type { Activity, GoalType, Profile, Rate, Sex, Units } from "@/lib/types";
+
+const GOAL_TYPES: GoalType[] = ["cut", "maintain", "gain"];
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,6 +36,7 @@ export async function POST(req: NextRequest) {
       goal_weight_kg: Number(b.goal_weight_kg),
       activity: b.activity as Activity,
       rate: b.rate as Rate,
+      goal_type: (GOAL_TYPES.includes(b.goal_type) ? b.goal_type : "cut") as GoalType,
     };
 
     if (!input.age || !input.height_cm || !input.weight_kg) {
@@ -46,18 +49,18 @@ export async function POST(req: NextRequest) {
 
     await sql`
       INSERT INTO profile (
-        id, name, age, sex, height_cm, weight_kg, goal_weight_kg, activity, rate, units,
+        id, name, age, sex, height_cm, weight_kg, goal_weight_kg, activity, rate, goal_type, units,
         target_calories, target_protein, target_carbs, target_fat, target_fiber, updated_at
       ) VALUES (
         ${userId}, ${name}, ${input.age}, ${input.sex}, ${input.height_cm}, ${input.weight_kg},
-        ${input.goal_weight_kg}, ${input.activity}, ${input.rate}, ${units},
+        ${input.goal_weight_kg}, ${input.activity}, ${input.rate}, ${input.goal_type}, ${units},
         ${t.target_calories}, ${t.target_protein}, ${t.target_carbs}, ${t.target_fat}, ${t.target_fiber}, now()
       )
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name, age = EXCLUDED.age, sex = EXCLUDED.sex,
         height_cm = EXCLUDED.height_cm, weight_kg = EXCLUDED.weight_kg,
         goal_weight_kg = EXCLUDED.goal_weight_kg, activity = EXCLUDED.activity,
-        rate = EXCLUDED.rate, units = EXCLUDED.units,
+        rate = EXCLUDED.rate, goal_type = EXCLUDED.goal_type, units = EXCLUDED.units,
         target_calories = EXCLUDED.target_calories, target_protein = EXCLUDED.target_protein,
         target_carbs = EXCLUDED.target_carbs, target_fat = EXCLUDED.target_fat,
         target_fiber = EXCLUDED.target_fiber, updated_at = now()

@@ -6,14 +6,17 @@ import { api } from "@/lib/api";
 import { isCancel } from "@/lib/retry";
 import {
   ACTIVITY_LABELS,
+  GAIN_RATE_LABELS,
   RATE_LABELS,
   computeTargets,
   inToCm,
   lbToKg,
   type TargetInput,
 } from "@/lib/nutrition";
-import type { Activity, Rate, Sex, Units } from "@/lib/types";
+import { GOAL_META, type Activity, type GoalType, type Rate, type Sex, type Units } from "@/lib/types";
 import { CheckIcon, ChevronLeft, WarnIcon } from "@/components/Icons";
+
+const GOAL_TYPES: GoalType[] = ["cut", "maintain", "gain"];
 
 interface State {
   name: string;
@@ -27,6 +30,7 @@ interface State {
   goal: string; // in chosen units
   activity: Activity;
   rate: Rate;
+  goalType: GoalType;
 }
 
 const STEPS = ["You", "Body", "Activity", "Goal", "Plan"] as const;
@@ -47,6 +51,7 @@ export default function Onboarding() {
     goal: "",
     activity: "moderate",
     rate: "moderate",
+    goalType: "cut",
   });
   const set = (p: Partial<State>) => setS((o) => ({ ...o, ...p }));
 
@@ -57,9 +62,12 @@ export default function Onboarding() {
         ? Number(s.heightCm)
         : inToCm(Number(s.heightFt || 0) * 12 + Number(s.heightIn || 0));
     const weight_kg = s.units === "metric" ? Number(s.weight) : lbToKg(Number(s.weight));
-    const goal_weight_kg = s.units === "metric" ? Number(s.goal) : lbToKg(Number(s.goal));
+    // at maintenance the goal weight is just your current weight
+    const goal_weight_kg = s.goalType === "maintain"
+      ? weight_kg
+      : (s.units === "metric" ? Number(s.goal) : lbToKg(Number(s.goal)));
     if (!age || !height_cm || !weight_kg || !goal_weight_kg) return null;
-    return { age, sex: s.sex, height_cm, weight_kg, goal_weight_kg, activity: s.activity, rate: s.rate };
+    return { age, sex: s.sex, height_cm, weight_kg, goal_weight_kg, activity: s.activity, rate: s.rate, goal_type: s.goalType };
   }, [s]);
 
   const targets = useMemo(() => (metric ? computeTargets(metric) : null), [metric]);
@@ -71,7 +79,7 @@ export default function Onboarding() {
         !!s.weight &&
         (s.units === "metric" ? !!s.heightCm : !!s.heightFt)
       );
-    if (step === 3) return !!s.goal && !!metric;
+    if (step === 3) return s.goalType === "maintain" ? !!metric : !!s.goal && !!metric;
     return true;
   })();
 
@@ -183,20 +191,48 @@ export default function Onboarding() {
         )}
 
         {step === 3 && (
-          <Step title="Your goal" sub="Where you want to land, and how fast.">
-            <Labeled label="Goal weight">
-              <div className="relative">
-                <input className="field tabular pr-12" inputMode="decimal" placeholder={s.units === "metric" ? "72" : "158"} value={s.goal} onChange={(e) => set({ goal: e.target.value.replace(/[^\d.]/g, "") })} />
-                <Suffix>{s.units === "metric" ? "kg" : "lb"}</Suffix>
-              </div>
-            </Labeled>
-            <Labeled label="How aggressive?">
-              <div className="flex flex-col gap-2.5">
-                {(Object.keys(RATE_LABELS) as Rate[]).map((r) => (
-                  <Choice key={r} on={s.rate === r} onClick={() => set({ rate: r })} title={RATE_LABELS[r].title} sub={RATE_LABELS[r].sub} />
+          <Step title="Your goal" sub="Pick a direction — Cut shrinks fat, Lean bulk builds muscle.">
+            <Labeled label="I want to…">
+              <div className="grid grid-cols-3 gap-2">
+                {GOAL_TYPES.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    aria-pressed={s.goalType === g}
+                    onClick={() => set({ goalType: g })}
+                    className="glass card py-3 px-2 text-center pressable"
+                    style={s.goalType === g ? { borderColor: "rgba(201,184,240,0.6)", background: "rgba(201,184,240,0.1)" } : undefined}
+                  >
+                    <p className="text-sm font-semibold">{GOAL_META[g].title}</p>
+                    <p className="text-[10px] text-[var(--muted)] mt-0.5 leading-tight">{GOAL_META[g].sub}</p>
+                  </button>
                 ))}
               </div>
             </Labeled>
+
+            {s.goalType !== "maintain" && (
+              <Labeled label="Goal weight">
+                <div className="relative">
+                  <input className="field tabular pr-12" inputMode="decimal" placeholder={s.units === "metric" ? "72" : "158"} value={s.goal} onChange={(e) => set({ goal: e.target.value.replace(/[^\d.]/g, "") })} />
+                  <Suffix>{s.units === "metric" ? "kg" : "lb"}</Suffix>
+                </div>
+              </Labeled>
+            )}
+
+            {s.goalType !== "maintain" && (
+              <Labeled label={s.goalType === "gain" ? "How fast?" : "How aggressive?"}>
+                <div className="flex flex-col gap-2.5">
+                  {(Object.keys(RATE_LABELS) as Rate[]).map((r) => {
+                    const meta = s.goalType === "gain" ? GAIN_RATE_LABELS[r] : RATE_LABELS[r];
+                    return <Choice key={r} on={s.rate === r} onClick={() => set({ rate: r })} title={meta.title} sub={meta.sub} />;
+                  })}
+                </div>
+              </Labeled>
+            )}
+
+            {s.goalType === "maintain" && (
+              <p className="text-sm text-[var(--muted)]">We&apos;ll set your calories to hold your current weight, with protein high enough to keep (or slowly build) muscle.</p>
+            )}
           </Step>
         )}
 
@@ -206,7 +242,9 @@ export default function Onboarding() {
               <p className="label mb-1">Daily calorie target</p>
               <p className="text-5xl font-bold tabular">{targets.target_calories}</p>
               <p className="text-sm text-[var(--muted)] mt-1">
-                {targets.deficit} kcal/day deficit · TDEE {targets.tdee}
+                {targets.direction === "none"
+                  ? `at maintenance · TDEE ${targets.tdee}`
+                  : `${targets.deficit} kcal/day ${targets.direction === "gain" ? "surplus" : "deficit"} · TDEE ${targets.tdee}`}
               </p>
             </div>
             <div className="grid grid-cols-4 gap-2 mb-3">

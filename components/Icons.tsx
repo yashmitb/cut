@@ -1,4 +1,5 @@
 // All icons come from lucide-react, re-exported under the names the app uses.
+import * as React from "react";
 import {
   Home,
   ChartColumnBig,
@@ -27,6 +28,12 @@ import {
   Search,
   BookOpen,
   MessageCircleQuestion,
+  Star,
+  Copy,
+  Bell,
+  Download,
+  PartyPopper,
+  Target,
   type LucideIcon,
 } from "lucide-react";
 import type { MealType } from "@/lib/types";
@@ -47,8 +54,13 @@ export const ChevronRight = LChevronRight;
 export const PencilIcon = Pencil;
 export const ImageIcon = LImage;
 export const ScaleIcon = Scale;
-export { Flame, Sprout, Layers, ChevronDown, Search, BookOpen };
+export { Flame, Sprout, Layers, ChevronDown, Search, BookOpen, Bell, Target };
 export const AskIcon = MessageCircleQuestion;
+export const StarIcon = Star;
+export const StarFilledIcon = (props: React.ComponentProps<typeof Star>) => <Star {...props} fill="currentColor" />;
+export const CopyIcon = Copy;
+export const DownloadIcon = Download;
+export const CelebrateIcon = PartyPopper;
 
 export const MEAL_ICONS: Record<MealType, LucideIcon> = {
   breakfast: Sunrise,
