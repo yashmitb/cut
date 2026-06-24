@@ -3,7 +3,7 @@
 // then every 60s — showing "Retrying in N…" the whole time.
 //
 // Designed to be concurrency-safe: multiple in-flight calls can be retrying at
-// once (e.g. the day's food + water load together) without cancelling each other.
+// once (e.g. the day's food + recents load together) without cancelling each other.
 
 export class ApiError extends Error {
   status: number;

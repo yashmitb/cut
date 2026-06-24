@@ -110,12 +110,6 @@ const SCHEMA_SQL = `
     note       TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
-  CREATE TABLE IF NOT EXISTS water_logs (
-    user_id  TEXT NOT NULL,
-    log_date DATE NOT NULL,
-    ml       INT  NOT NULL DEFAULT 0,
-    PRIMARY KEY (user_id, log_date)
-  );
   CREATE TABLE IF NOT EXISTS app_settings (
     id             TEXT PRIMARY KEY,
     gemini_api_key TEXT,

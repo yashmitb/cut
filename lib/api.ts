@@ -33,7 +33,7 @@ export const api = {
   saveProfile: (body: unknown) => call<{ profile: Profile }>("Saving profile", "/api/profile", post(body)),
 
   getToday: (date: string) =>
-    call<{ profile: Profile | null; items: FoodLog[]; water: number }>("Loading your day", `/api/today?date=${date}`),
+    call<{ profile: Profile | null; items: FoodLog[] }>("Loading your day", `/api/today?date=${date}`),
   getDay: (date: string) => call<{ items: FoodLog[] }>("Loading your day", `/api/log?date=${date}`),
   addItems: (
     date: string,
@@ -65,9 +65,6 @@ export const api = {
     }>("Loading recents", "/api/recent"),
   suggest: (remaining: DayTotals, meal: MealType, craving: string) =>
     call<{ suggestion: MealSuggestion }>("Cooking up an idea", "/api/suggest", post({ ...remaining, meal, craving })),
-
-  getWater: (date: string) => call<{ ml: number }>("Loading water", `/api/water?date=${date}`),
-  addWater: (date: string, delta: number) => call<{ ml: number }>("Updating water", "/api/water", post({ date, delta })),
 
   getSettings: () =>
     call<{ hasKey: boolean; source: "saved" | "env" | "none"; masked: string; visionModel: string; textModel: string }>(
