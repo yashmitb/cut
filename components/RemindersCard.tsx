@@ -107,7 +107,7 @@ export default function RemindersCard() {
 
   function test() {
     if (perm !== "granted") return;
-    new Notification("Cut", { body: "Reminders are on — you'll get a nudge at each meal. ✅", icon: "/icon" });
+    new Notification("Cut", { body: "Reminders are on — you'll get nudges to log meals and weigh in. ✅", icon: "/icon" });
     setTested(true);
     setTimeout(() => setTested(false), 2000);
   }
@@ -131,7 +131,7 @@ export default function RemindersCard() {
           <button
             role="switch"
             aria-checked={r.enabled && perm === "granted"}
-            aria-label="Enable meal reminders"
+            aria-label="Enable reminders"
             onClick={() => (r.enabled ? setR((x) => ({ ...x, enabled: false })) : enable())}
             className="relative w-12 h-7 rounded-full flex-shrink-0 transition-colors pressable"
             style={{ background: r.enabled && perm === "granted" ? "var(--p-cal)" : "rgba(255,255,255,0.12)" }}

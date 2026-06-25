@@ -43,3 +43,4 @@ next-env.d.ts
 
 # transpiled test output
 .test-out/
+.gstack/

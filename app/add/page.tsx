@@ -16,6 +16,7 @@ import {
   CopyIcon,
   ImageIcon,
   Layers,
+  PencilIcon,
   PlusIcon,
   SendIcon,
   SparkIcon,
@@ -90,6 +91,7 @@ function AddInner() {
   const [justAddedCombo, setJustAddedCombo] = useState<number | null>(null);
   const [addedCounts, setAddedCounts] = useState<Record<string, number>>({});
   const [showAllRecent, setShowAllRecent] = useState(false);
+  const [showDescribe, setShowDescribe] = useState(startText);
   const [toast, setToast] = useState<string | null>(null);
   const [groupOn, setGroupOn] = useState(false);
   const [groupName, setGroupName] = useState("");
@@ -301,6 +303,18 @@ function AddInner() {
   // return to the day being edited (not always today)
   const backToDay = isToday ? "/" : `/?date=${date}`;
 
+  // one merged quick-log list: favorites first (starred), then recent foods that
+  // aren't already favorited — no duplicates, one tidy chip cloud.
+  const favNameSet = new Set(favorites.map((f) => f.name.toLowerCase()));
+  const mergedQuick: { item: FoodItem; fav: boolean }[] = [
+    ...favorites.map((f) => ({ item: { ...f, confidence: 1 } as FoodItem, fav: true })),
+    ...recent.filter((r) => !favNameSet.has(r.name.toLowerCase())).map((r) => ({ item: r as FoodItem, fav: r.fav ?? isFav(r.name) })),
+  ];
+  const QUICK_LIMIT = 10;
+  const visibleQuick = showAllRecent ? mergedQuick : mergedQuick.slice(0, QUICK_LIMIT);
+  const hiddenQuick = mergedQuick.length - visibleQuick.length;
+  const hasQuickLog = mergedQuick.length > 0 || combos.length > 0;
+
   return (
     <main className="min-h-dvh flex flex-col px-4 pt-[max(env(safe-area-inset-top),18px)]">
       <header className="flex items-center justify-between gap-2 mb-3">
@@ -344,115 +358,103 @@ function AddInner() {
 
       {/* ------- INPUT STAGE ------- */}
       {stage === "input" && (
-        <div className="flex-1 flex flex-col gap-4 pb-8 rise">
-          {/* quick tools — portion multiplier + copy yesterday */}
-          {(recent.length > 0 || favorites.length > 0) && (
-            <div className="flex items-center gap-2">
-              <div className="seg flex-1" role="group" aria-label="Portion size for one-tap logging">
-                {PORTIONS.map((p) => (
-                  <button key={p} type="button" className="seg-item !text-xs" data-on={portion === p} aria-pressed={portion === p} onClick={() => setPortion(p)}>
-                    {portionLabel(p)}×
-                  </button>
-                ))}
-              </div>
-              <button onClick={copyMeal} disabled={copying} className="btn btn-ghost !py-2.5 !px-3 !text-xs flex-shrink-0" aria-label={`Copy yesterday's ${MEAL_META[meal].label}`}>
-                <CopyIcon width={14} height={14} /> {copying ? "Copying…" : "Copy yesterday"}
-              </button>
-            </div>
-          )}
-
-          {/* Favorites — pinned, always first */}
-          {favorites.length > 0 && (
-            <div>
-              <p className="text-xs text-[var(--faint)] uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
-                <StarFilledIcon width={12} height={12} style={{ color: "var(--p-fat)" }} /> Favorites
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {favorites.map((fav) => pill({ ...fav, confidence: 1 }, true))}
-              </div>
-            </div>
-          )}
-
-          {combos.length > 0 && (
-            <div>
-              <p className="text-xs text-[var(--faint)] uppercase tracking-wider mb-2 px-1 flex items-center gap-1.5">
-                <Layers width={13} height={13} /> Your combos · tap to log the whole thing
-              </p>
-              <div className="flex flex-col gap-2">
-                {combos.map((c, i) => {
-                  const flash = justAddedCombo === i;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => quickAddCombo(c, i)}
-                      className="glass card flex items-center gap-3 p-3 pressable text-left transition-transform"
-                      style={flash ? { borderColor: "rgba(181,232,201,0.5)", background: "rgba(181,232,201,0.12)", transform: "scale(1.01)" } : undefined}
-                    >
-                      <span className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: "rgba(201,184,240,0.16)", color: "var(--p-cal)" }}>
-                        {flash ? <CheckIcon width={15} height={15} style={{ color: "var(--p-fiber)" }} /> : <Layers width={15} height={15} />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-semibold text-sm truncate">{flash ? "Added!" : c.group_label}</span>
-                        <span className="block text-xs text-[var(--muted)] truncate">{c.items.map((it) => it.name).join(" · ")}</span>
-                      </span>
-                      <span className="text-sm font-bold tabular flex-shrink-0" style={{ color: "var(--p-cal)" }}>{Math.round(c.calories)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {recent.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2 px-1">
-                <p className="text-xs text-[var(--faint)] uppercase tracking-wider">Quick add{portion !== 1 ? ` · ${portionLabel(portion)}× portion` : " · tap to log instantly"}</p>
-                {recent.length > 8 && (
-                  <button onClick={() => setShowAllRecent((s) => !s)} className="text-[11px] text-[var(--muted)] pressable">
-                    {showAllRecent ? "Show less" : `+${recent.length - 8} more`}
-                  </button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {(showAllRecent ? recent : recent.slice(0, 8)).map((it) => pill(it, it.fav ?? isFav(it.name)))}
-              </div>
-            </div>
-          )}
-
+        <div className="flex-1 flex flex-col gap-3 pb-8 rise">
+          {/* PRIMARY — capture a new meal */}
           <button
             onClick={() => cameraRef.current?.click()}
-            className="glass-strong card flex flex-col items-center justify-center py-12 pressable"
+            className="glass-strong card flex flex-col items-center justify-center py-9 pressable"
             style={{ background: "linear-gradient(160deg, rgba(201,184,240,0.12), rgba(168,208,240,0.06))" }}
           >
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mb-3" style={{ background: "rgba(255,255,255,0.9)", color: "#0a0a0a" }}>
-              <CameraIcon width={30} height={30} />
+            <div className="w-14 h-14 rounded-full flex items-center justify-center mb-2.5" style={{ background: "rgba(255,255,255,0.9)", color: "#0a0a0a" }}>
+              <CameraIcon width={26} height={26} />
             </div>
             <p className="font-semibold text-lg">Take a photo</p>
             <p className="text-sm text-[var(--muted)] mt-1">Point at your plate — AI does the rest</p>
           </button>
 
-          <button onClick={() => uploadRef.current?.click()} className="glass card flex items-center justify-center gap-2 py-4 pressable text-[var(--muted)] font-semibold">
-            <ImageIcon width={20} height={20} /> Upload from library
-          </button>
-
-          <div className="flex items-center gap-3 my-1">
-            <div className="flex-1 h-px" style={{ background: "var(--line)" }} />
-            <span className="text-xs text-[var(--faint)] uppercase tracking-wider">or describe it</span>
-            <div className="flex-1 h-px" style={{ background: "var(--line)" }} />
-          </div>
-
-          <div className="glass card p-3">
-            <textarea
-              autoFocus={startText}
-              className="field !bg-transparent !border-0 resize-none min-h-[80px] !p-1"
-              placeholder="I ate 1 cup of rice, 6 oz grilled chicken, and a tbsp of olive oil…"
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-            />
-            <button onClick={handleText} disabled={!textInput.trim()} className="btn btn-primary w-full mt-1">
-              <SparkIcon width={18} height={18} /> Analyze
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => uploadRef.current?.click()} className="btn btn-ghost !py-3">
+              <ImageIcon width={18} height={18} /> Upload
+            </button>
+            <button onClick={() => setShowDescribe((s) => !s)} aria-expanded={showDescribe} className="btn btn-ghost !py-3" style={showDescribe ? { borderColor: "rgba(201,184,240,0.4)", color: "var(--fg)" } : undefined}>
+              <PencilIcon width={17} height={17} /> Describe
             </button>
           </div>
+
+          {showDescribe && (
+            <div className="glass card p-3 rise">
+              <textarea
+                autoFocus
+                className="field !bg-transparent !border-0 resize-none min-h-[72px] !p-1"
+                placeholder="I ate 1 cup of rice, 6 oz grilled chicken, and a tbsp of olive oil…"
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+              />
+              <button onClick={handleText} disabled={!textInput.trim()} className="btn btn-primary w-full mt-1">
+                <SparkIcon width={18} height={18} /> Analyze
+              </button>
+            </div>
+          )}
+
+          {/* QUICK LOG — one consolidated card: combos, then favorites + recents */}
+          {hasQuickLog && (
+            <div className="glass card p-3.5 mt-1">
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <p className="label !text-[11px]">Quick log</p>
+                {mergedQuick.length > 0 && (
+                  <div className="flex items-center gap-0.5 rounded-xl p-0.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid var(--line)" }} role="group" aria-label="Portion size for one-tap logging">
+                    {PORTIONS.map((p) => (
+                      <button key={p} type="button" aria-pressed={portion === p} onClick={() => setPortion(p)} className="px-2 py-1 rounded-lg text-[11px] font-semibold tabular pressable" style={portion === p ? { background: "rgba(255,255,255,0.95)", color: "#0a0a0a" } : { color: "var(--muted)" }}>
+                        {portionLabel(p)}×
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {combos.length > 0 && (
+                <div className="flex flex-col gap-2 mb-3">
+                  {combos.map((c, i) => {
+                    const flash = justAddedCombo === i;
+                    return (
+                      <button
+                        key={i}
+                        onClick={() => quickAddCombo(c, i)}
+                        className="flex items-center gap-2.5 p-2.5 rounded-2xl pressable text-left transition-transform"
+                        style={flash ? { background: "rgba(181,232,201,0.14)", transform: "scale(1.01)" } : { background: "rgba(255,255,255,0.04)" }}
+                      >
+                        <span className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: "rgba(201,184,240,0.16)", color: "var(--p-cal)" }}>
+                          {flash ? <CheckIcon width={14} height={14} style={{ color: "var(--p-fiber)" }} /> : <Layers width={14} height={14} />}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-sm truncate">{flash ? "Added!" : c.group_label}</span>
+                          <span className="block text-[11px] text-[var(--muted)] truncate">{c.items.map((it) => it.name).join(" · ")}</span>
+                        </span>
+                        <span className="text-sm font-bold tabular flex-shrink-0" style={{ color: "var(--p-cal)" }}>{Math.round(c.calories)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {mergedQuick.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {visibleQuick.map(({ item, fav }) => pill(item, fav))}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between gap-2 mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
+                <button onClick={copyMeal} disabled={copying} className="text-xs text-[var(--muted)] flex items-center gap-1.5 pressable disabled:opacity-50" aria-label={`Copy yesterday's ${MEAL_META[meal].label}`}>
+                  <CopyIcon width={13} height={13} /> {copying ? "Copying…" : `Copy yesterday's ${MEAL_META[meal].label.toLowerCase()}`}
+                </button>
+                {(hiddenQuick > 0 || showAllRecent) && mergedQuick.length > QUICK_LIMIT && (
+                  <button onClick={() => setShowAllRecent((s) => !s)} className="text-[11px] text-[var(--muted)] pressable flex-shrink-0">
+                    {showAllRecent ? "Show less" : `+${hiddenQuick} more`}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
