@@ -58,7 +58,7 @@ export default function AskPage() {
         </button>
         <div className="flex items-center gap-2">
           <span style={{ color: "var(--p-cal)" }}><AskIcon width={20} height={20} /></span>
-          <h1 className="text-lg font-bold">Ask the coach</h1>
+          <h1 className="text-lg font-bold">Cut AI</h1>
         </div>
       </header>
 

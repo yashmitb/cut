@@ -518,7 +518,7 @@ function AddInner() {
           <div className="glass card p-4 mb-3">
             <div className="flex items-center gap-2 mb-3">
               <span style={{ color: "var(--p-cal)" }}><SparkIcon width={16} height={16} /></span>
-              <span className="text-sm font-semibold">Coach</span>
+              <span className="text-sm font-semibold">Cut AI</span>
               <span className="text-xs text-[var(--faint)]">— correct anything, it learns</span>
             </div>
             <div className="flex flex-col gap-2 max-h-52 overflow-y-auto mb-3">

@@ -63,7 +63,7 @@ export default function BottomNav() {
           </div>
         </Link>
 
-        {tab("/ask", AskIcon, "Coach")}
+        {tab("/ask", AskIcon, "Cut AI")}
         {tab("/profile", UserIcon, "Profile")}
       </div>
     </nav>
