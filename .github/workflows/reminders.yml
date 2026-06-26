@@ -1,7 +1,8 @@
 name: Send reminders
 
-# Free scheduler for Cut's push reminders. Pings the cron endpoint every 15
-# minutes; the endpoint figures out which reminders are due and sends them.
+# Free scheduler for Cut's push reminders. Pings the cron endpoint every 5
+# minutes (GitHub's fastest free-tier interval); the endpoint figures out
+# which reminders are due and sends them.
 #
 # One-time setup: add a repository secret named CRON_SECRET with the value shown
 # in Cut → Profile → Reminders → "One-time delivery setup".
@@ -11,7 +12,7 @@ name: Send reminders
 
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
   workflow_dispatch: {} # lets you trigger a run manually to test
 
 jobs:
