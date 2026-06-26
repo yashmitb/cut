@@ -111,10 +111,10 @@ export default function RemindersCard() {
     return sub;
   }, []);
 
-  const syncToServer = useCallback(async (next: Reminders, test = false) => {
+  const syncToServer = useCallback(async (next: Reminders) => {
     const sub = await getSubscription();
     if (!sub) throw new Error("Could not subscribe to notifications.");
-    await api.savePush({ subscription: sub.toJSON() as PushSubscriptionJSON, reminders: next, timezone: tz(), test });
+    await api.savePush({ subscription: sub.toJSON() as PushSubscriptionJSON, reminders: next, timezone: tz() });
   }, [getSubscription]);
 
   async function enable() {
@@ -159,16 +159,24 @@ export default function RemindersCard() {
     saveTimer.current = setTimeout(() => { syncToServer(next).catch(() => {}); }, 600);
   }
 
+  // Schedules a synthetic "test" reminder for right now and routes it through
+  // the exact same dueReminders/cron path real reminders use — the next real
+  // cron tick (cron-job.org / GitHub Actions) is what actually sends it.
   async function test() {
     setBusy(true);
     try {
-      const res = await api.savePush({ subscription: (await getSubscription())!.toJSON() as PushSubscriptionJSON, reminders: r, timezone: tz(), test: true });
+      const sub = await getSubscription();
+      if (!sub) throw new Error("Could not subscribe to notifications.");
+      const now = new Date();
+      const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const reminders = { enabled: true, times: { ...r.times, test: hhmm } };
+      const res = await api.savePush({ subscription: sub.toJSON() as PushSubscriptionJSON, reminders, timezone: tz(), cronTest: true });
       setTested(res.ok ? "scheduled" : "fail");
     } catch {
       setTested("fail");
     } finally {
       setBusy(false);
-      setTimeout(() => setTested("idle"), 12000);
+      setTimeout(() => setTested("idle"), 60000);
     }
   }
 
@@ -231,7 +239,7 @@ export default function RemindersCard() {
           ))}
 
           <button onClick={test} disabled={busy} className="btn btn-ghost mt-1 !py-2.5 text-sm">
-            {tested === "scheduled" ? <><CheckIcon width={16} height={16} /> Sending in 10s — lock or close the app now</> : tested === "fail" ? "Couldn't schedule — try again" : "Send a test notification (in 10s)"}
+            {tested === "scheduled" ? <><CheckIcon width={16} height={16} /> Scheduled — wait ~1 min for the real cron job</> : tested === "fail" ? "Couldn't schedule — try again" : "Test via real cron job"}
           </button>
 
           {/* delivery setup — the free cron that fires reminders when the app is closed (owner only) */}

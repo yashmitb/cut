@@ -1,14 +1,11 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, getUser, unauthorized } from "@/lib/supabase/auth";
 import { SUPABASE_CONFIGURED } from "@/lib/supabase/env";
-import { ensureWebPushConfigured, sendPush, type ReminderConfig } from "@/lib/push";
+import { ensureWebPushConfigured, type ReminderConfig } from "@/lib/push";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 15; // test sends delay 10s so you can lock/close the app first
-
-const TEST_DELAY_MS = 10_000;
 
 // Only the app owner gets the cron-secret setup panel — other users just get
 // reminders working with no setup of their own.
@@ -68,14 +65,13 @@ export async function POST(req: NextRequest) {
         user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
         timezone = EXCLUDED.timezone, reminders = EXCLUDED.reminders, updated_at = now()`;
 
-    // optional end-to-end test: send a push 10s from now, so closing/locking
-    // the app right after tapping the button still proves background delivery.
-    if (b.test) {
-      after(async () => {
-        await new Promise((resolve) => setTimeout(resolve, TEST_DELAY_MS));
-        await sendPush({ endpoint, p256dh, auth, timezone, reminders, last_sent: {} }, "Cut", "Reminders are on — you'll get nudges even when the app is closed. ✅");
-      });
-      return NextResponse.json({ ok: true, test: true, delayMs: TEST_DELAY_MS });
+    // "test via real cron": the client sets reminders.times.test to right now.
+    // Clear any stale last_sent.test so it's eligible again, then the next
+    // real cron tick (cron-job.org / GitHub Actions) sends it through the
+    // exact same /api/cron/reminders path a real reminder uses.
+    if (b.cronTest) {
+      await sql`UPDATE push_subs SET last_sent = last_sent - 'test' WHERE endpoint = ${endpoint}`;
+      return NextResponse.json({ ok: true, cronTest: true });
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

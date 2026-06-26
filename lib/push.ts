@@ -45,7 +45,9 @@ export async function ensureWebPushConfigured(): Promise<ServerKeys> {
 
 // ---- reminder schedule ----
 
-export type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner";
+// "test" is a synthetic key used only by the "test via real cron" button —
+// it runs through the exact same dueReminders/cron path as a real reminder.
+export type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner" | "test";
 export interface ReminderConfig {
   enabled: boolean;
   times: Partial<Record<ReminderKey, string>>; // "HH:MM"
@@ -56,6 +58,7 @@ export const REMINDER_COPY: Record<ReminderKey, string> = {
   breakfast: "Log your breakfast 🍳",
   lunch: "Lunch time — don't forget to log it 🥗",
   dinner: "Log dinner to close out your day 🍽️",
+  test: "Cron test — this came from the real scheduled job ⏰",
 };
 
 // fire within this many minutes after the scheduled time (tolerates cron delays
