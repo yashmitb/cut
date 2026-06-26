@@ -58,12 +58,25 @@ export async function POST(req: NextRequest) {
     const reminders: ReminderConfig = b.reminders || { enabled: false, times: {} };
     const timezone: string = typeof b.timezone === "string" ? b.timezone.slice(0, 64) : "UTC";
 
+    // If a reminder's time actually changed, clear its last_sent entry so the
+    // new schedule is eligible today too — otherwise a key that already fired
+    // once today stays "sent" even after being moved to a brand-new time.
+    const existing = await sql<{ reminders: ReminderConfig | null; last_sent: Partial<Record<string, string>> | null }[]>`
+      SELECT reminders, last_sent FROM push_subs WHERE endpoint = ${endpoint}`;
+    const oldTimes = existing[0]?.reminders?.times || {};
+    const lastSent: Partial<Record<string, string>> = { ...(existing[0]?.last_sent || {}) };
+    for (const key of Object.keys(reminders.times || {})) {
+      if (oldTimes[key as keyof typeof oldTimes] !== reminders.times[key as keyof typeof reminders.times]) {
+        delete lastSent[key];
+      }
+    }
+
     await sql`
       INSERT INTO push_subs (endpoint, user_id, p256dh, auth, timezone, reminders, last_sent, updated_at)
-      VALUES (${endpoint}, ${userId}, ${p256dh}, ${auth}, ${timezone}, ${sql.json(reminders as never)}, '{}'::jsonb, now())
+      VALUES (${endpoint}, ${userId}, ${p256dh}, ${auth}, ${timezone}, ${sql.json(reminders as never)}, ${sql.json(lastSent as never)}, now())
       ON CONFLICT (endpoint) DO UPDATE SET
         user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
-        timezone = EXCLUDED.timezone, reminders = EXCLUDED.reminders, updated_at = now()`;
+        timezone = EXCLUDED.timezone, reminders = EXCLUDED.reminders, last_sent = EXCLUDED.last_sent, updated_at = now()`;
 
     // "test via real cron": the client sets reminders.times.test to right now.
     // Clear any stale last_sent.test so it's eligible again, then the next
