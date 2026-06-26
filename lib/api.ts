@@ -95,7 +95,7 @@ export const api = {
   getPush: () =>
     call<{ vapidPublicKey: string; cronSecret: string | null; cronUrl: string | null; subscriptions: number }>("Loading push", "/api/push"),
   savePush: (body: { subscription: PushSubscriptionJSON; reminders: unknown; timezone: string; test?: boolean }) =>
-    call<{ ok: boolean; test?: boolean }>("Saving reminders", "/api/push", post(body)),
+    call<{ ok: boolean; test?: boolean; delayMs?: number }>("Saving reminders", "/api/push", post(body)),
   deletePush: (endpoint?: string) =>
     call<{ ok: boolean }>("Turning off reminders", `/api/push${endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : ""}`, { method: "DELETE" }),
 };

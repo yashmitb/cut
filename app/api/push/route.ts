@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, getUser, unauthorized } from "@/lib/supabase/auth";
 import { SUPABASE_CONFIGURED } from "@/lib/supabase/env";
@@ -6,6 +6,9 @@ import { ensureWebPushConfigured, sendPush, type ReminderConfig } from "@/lib/pu
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 15; // test sends delay 10s so you can lock/close the app first
+
+const TEST_DELAY_MS = 10_000;
 
 // Only the app owner gets the cron-secret setup panel — other users just get
 // reminders working with no setup of their own.
@@ -65,10 +68,14 @@ export async function POST(req: NextRequest) {
         user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
         timezone = EXCLUDED.timezone, reminders = EXCLUDED.reminders, updated_at = now()`;
 
-    // optional end-to-end test: send a push to this device right now
+    // optional end-to-end test: send a push 10s from now, so closing/locking
+    // the app right after tapping the button still proves background delivery.
     if (b.test) {
-      const res = await sendPush({ endpoint, p256dh, auth, timezone, reminders, last_sent: {} }, "Cut", "Reminders are on — you'll get nudges even when the app is closed. ✅");
-      return NextResponse.json({ ok: res.ok, test: true });
+      after(async () => {
+        await new Promise((resolve) => setTimeout(resolve, TEST_DELAY_MS));
+        await sendPush({ endpoint, p256dh, auth, timezone, reminders, last_sent: {} }, "Cut", "Reminders are on — you'll get nudges even when the app is closed. ✅");
+      });
+      return NextResponse.json({ ok: true, test: true, delayMs: TEST_DELAY_MS });
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

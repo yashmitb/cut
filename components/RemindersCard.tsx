@@ -71,7 +71,7 @@ export default function RemindersCard() {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [perm, setPerm] = useState<NotificationPermission>("default");
   const [busy, setBusy] = useState(false);
-  const [tested, setTested] = useState<"idle" | "sent" | "fail">("idle");
+  const [tested, setTested] = useState<"idle" | "scheduled" | "fail">("idle");
   const [showSetup, setShowSetup] = useState(false);
   const [copied, setCopied] = useState(false);
   const setup = useRef<{ cronSecret: string | null; cronUrl: string | null } | null>(null);
@@ -163,12 +163,12 @@ export default function RemindersCard() {
     setBusy(true);
     try {
       const res = await api.savePush({ subscription: (await getSubscription())!.toJSON() as PushSubscriptionJSON, reminders: r, timezone: tz(), test: true });
-      setTested(res.ok ? "sent" : "fail");
+      setTested(res.ok ? "scheduled" : "fail");
     } catch {
       setTested("fail");
     } finally {
       setBusy(false);
-      setTimeout(() => setTested("idle"), 2500);
+      setTimeout(() => setTested("idle"), 12000);
     }
   }
 
@@ -231,7 +231,7 @@ export default function RemindersCard() {
           ))}
 
           <button onClick={test} disabled={busy} className="btn btn-ghost mt-1 !py-2.5 text-sm">
-            {tested === "sent" ? <><CheckIcon width={16} height={16} /> Sent — check your notifications</> : tested === "fail" ? "Couldn't send — try again" : "Send a test notification"}
+            {tested === "scheduled" ? <><CheckIcon width={16} height={16} /> Sending in 10s — lock or close the app now</> : tested === "fail" ? "Couldn't schedule — try again" : "Send a test notification (in 10s)"}
           </button>
 
           {/* delivery setup — the free cron that fires reminders when the app is closed (owner only) */}
