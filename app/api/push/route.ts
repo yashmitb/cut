@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 // Only the app owner gets the cron-secret setup panel — other users just get
 // reminders working with no setup of their own.
-const OWNER_EMAIL = "ybhaverisetti@ucsd.edu";
+const OWNER_EMAIL = "yashmitb07@gmail.com";
 
 async function isOwner(): Promise<boolean> {
   if (!SUPABASE_CONFIGURED) return true; // local dev, single-user
