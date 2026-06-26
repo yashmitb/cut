@@ -1,13 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
-import { getUserId, unauthorized } from "@/lib/supabase/auth";
+import { getUserId, getUser, unauthorized } from "@/lib/supabase/auth";
+import { SUPABASE_CONFIGURED } from "@/lib/supabase/env";
 import { ensureWebPushConfigured, sendPush, type ReminderConfig } from "@/lib/push";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Setup info for the client: the VAPID public key to subscribe with, plus the
-// cron secret + URL the user pastes into a free scheduler (GitHub Actions etc.).
+// Only the app owner gets the cron-secret setup panel — other users just get
+// reminders working with no setup of their own.
+const OWNER_EMAIL = "ybhaverisetti@ucsd.edu";
+
+async function isOwner(): Promise<boolean> {
+  if (!SUPABASE_CONFIGURED) return true; // local dev, single-user
+  const user = await getUser();
+  return (user?.email || "").toLowerCase() === OWNER_EMAIL;
+}
+
+// Setup info for the client: the VAPID public key to subscribe with, plus
+// (owner only) the cron secret + URL pasted into a free scheduler (GitHub Actions etc.).
 export async function GET(req: NextRequest) {
   try {
     await ensureSchema();
@@ -15,11 +26,12 @@ export async function GET(req: NextRequest) {
     if (!userId) return unauthorized();
     const keys = await ensureWebPushConfigured();
     const subs = await sql<{ endpoint: string }[]>`SELECT endpoint FROM push_subs WHERE user_id = ${userId}`;
+    const owner = await isOwner();
     const origin = req.nextUrl.origin;
     return NextResponse.json({
       vapidPublicKey: keys.vapid_public,
-      cronSecret: keys.cron_secret,
-      cronUrl: `${origin}/api/cron/reminders?key=${keys.cron_secret}`,
+      cronSecret: owner ? keys.cron_secret : null,
+      cronUrl: owner ? `${origin}/api/cron/reminders?key=${keys.cron_secret}` : null,
       subscriptions: subs.length,
     });
   } catch (e) {

@@ -74,7 +74,7 @@ export default function RemindersCard() {
   const [tested, setTested] = useState<"idle" | "sent" | "fail">("idle");
   const [showSetup, setShowSetup] = useState(false);
   const [copied, setCopied] = useState(false);
-  const setup = useRef<{ cronSecret: string; cronUrl: string } | null>(null);
+  const setup = useRef<{ cronSecret: string | null; cronUrl: string | null } | null>(null);
   const vapid = useRef<string | null>(null);
 
   useEffect(() => {
@@ -128,7 +128,7 @@ export default function RemindersCard() {
       const next = { ...r, enabled: true };
       await syncToServer(next);
       persist(next);
-      setShowSetup(true); // surface delivery setup the first time
+      if (setup.current?.cronSecret) setShowSetup(true); // surface delivery setup the first time (owner only)
     } catch (e) {
       console.error(e);
       alert((e as Error).message);
@@ -173,7 +173,7 @@ export default function RemindersCard() {
   }
 
   function copySecret() {
-    if (!setup.current) return;
+    if (!setup.current?.cronSecret) return;
     navigator.clipboard?.writeText(setup.current.cronSecret).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
   }
 
@@ -231,25 +231,29 @@ export default function RemindersCard() {
           ))}
 
           <button onClick={test} disabled={busy} className="btn btn-ghost mt-1 !py-2.5 text-sm">
-            {tested === "sent" ? <><CheckIcon width={16} height={16} /> Sent — check your notifications</> : tested === "fail" ? "Couldn't send — see setup below" : "Send a test notification"}
+            {tested === "sent" ? <><CheckIcon width={16} height={16} /> Sent — check your notifications</> : tested === "fail" ? "Couldn't send — try again" : "Send a test notification"}
           </button>
 
-          {/* delivery setup — the free cron that fires reminders when the app is closed */}
-          <button onClick={() => setShowSetup((s) => !s)} className="flex items-center justify-between text-xs text-[var(--muted)] mt-1 pressable" aria-expanded={showSetup}>
-            <span>One-time delivery setup</span>
-            <ChevronDown width={14} height={14} style={{ transform: showSetup ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
-          </button>
-          {showSetup && (
-            <div className="text-[11px] text-[var(--muted)] leading-relaxed flex flex-col gap-2 rise" style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: "10px 12px" }}>
-              <p>Reminders are sent by a free scheduler that pings Cut every few minutes. A GitHub Action is already included in the repo — just add this secret once:</p>
-              <div className="flex items-center gap-2">
-                <code className="flex-1 truncate text-[var(--fg)]" style={{ background: "rgba(255,255,255,0.05)", borderRadius: 8, padding: "4px 8px" }}>
-                  CRON_SECRET = {setup.current ? `${setup.current.cronSecret.slice(0, 10)}…` : "…"}
-                </code>
-                <button onClick={copySecret} className="chip pressable flex-shrink-0">{copied ? "Copied" : "Copy"}</button>
-              </div>
-              <p>Add it at <span className="text-[var(--fg)]">GitHub → repo → Settings → Secrets → Actions → New secret</span>. No GitHub? Paste the full cron URL into any free scheduler (cron-job.org) on a 5-minute interval.</p>
-            </div>
+          {/* delivery setup — the free cron that fires reminders when the app is closed (owner only) */}
+          {setup.current?.cronSecret && (
+            <>
+              <button onClick={() => setShowSetup((s) => !s)} className="flex items-center justify-between text-xs text-[var(--muted)] mt-1 pressable" aria-expanded={showSetup}>
+                <span>One-time delivery setup</span>
+                <ChevronDown width={14} height={14} style={{ transform: showSetup ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+              </button>
+              {showSetup && (
+                <div className="text-[11px] text-[var(--muted)] leading-relaxed flex flex-col gap-2 rise" style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: "10px 12px" }}>
+                  <p>Reminders are sent by a free scheduler that pings Cut every few minutes. A GitHub Action is already included in the repo — just add this secret once:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 truncate text-[var(--fg)]" style={{ background: "rgba(255,255,255,0.05)", borderRadius: 8, padding: "4px 8px" }}>
+                      CRON_SECRET = {setup.current.cronSecret.slice(0, 10)}…
+                    </code>
+                    <button onClick={copySecret} className="chip pressable flex-shrink-0">{copied ? "Copied" : "Copy"}</button>
+                  </div>
+                  <p>Add it at <span className="text-[var(--fg)]">GitHub → repo → Settings → Secrets → Actions → New secret</span>. No GitHub? Paste the full cron URL into any free scheduler (cron-job.org) on a 5-minute interval.</p>
+                </div>
+              )}
+            </>
           )}
 
           <p className="text-[11px] text-[var(--faint)] leading-relaxed">
