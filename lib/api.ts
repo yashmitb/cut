@@ -91,4 +91,11 @@ export const api = {
 
   getProgress: (days: number) =>
     call<{ days: import("@/app/api/progress/route").DayRow[] }>("Loading progress", `/api/progress?days=${days}`),
+
+  getPush: () =>
+    call<{ vapidPublicKey: string; cronSecret: string; cronUrl: string; subscriptions: number }>("Loading push", "/api/push"),
+  savePush: (body: { subscription: PushSubscriptionJSON; reminders: unknown; timezone: string; test?: boolean }) =>
+    call<{ ok: boolean; test?: boolean }>("Saving reminders", "/api/push", post(body)),
+  deletePush: (endpoint?: string) =>
+    call<{ ok: boolean }>("Turning off reminders", `/api/push${endpoint ? `?endpoint=${encodeURIComponent(endpoint)}` : ""}`, { method: "DELETE" }),
 };

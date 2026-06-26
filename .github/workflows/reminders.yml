@@ -1,0 +1,33 @@
+name: Send reminders
+
+# Free scheduler for Cut's push reminders. Pings the cron endpoint every 15
+# minutes; the endpoint figures out which reminders are due and sends them.
+#
+# One-time setup: add a repository secret named CRON_SECRET with the value shown
+# in Cut → Profile → Reminders → "One-time delivery setup".
+# (Settings → Secrets and variables → Actions → New repository secret.)
+#
+# Optional: override the deployed URL with a CUT_URL secret if your domain differs.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {} # lets you trigger a run manually to test
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger due reminders
+        run: |
+          BASE="${{ secrets.CUT_URL }}"
+          if [ -z "$BASE" ]; then BASE="https://cut-eta.vercel.app"; fi
+          if [ -z "${{ secrets.CRON_SECRET }}" ]; then
+            echo "CRON_SECRET secret is not set — add it in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+          code=$(curl -s -o /tmp/out.json -w "%{http_code}" \
+            -H "x-cron-key: ${{ secrets.CRON_SECRET }}" \
+            "$BASE/api/cron/reminders")
+          echo "HTTP $code"; cat /tmp/out.json || true
+          test "$code" = "200"

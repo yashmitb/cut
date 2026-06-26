@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Bell, CheckIcon } from "@/components/Icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import { Bell, CheckIcon, ChevronDown } from "@/components/Icons";
 
 type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner";
 type Reminders = { enabled: boolean; times: Record<ReminderKey, string> };
@@ -11,11 +12,11 @@ const DEFAULTS: Reminders = {
   enabled: false,
   times: { weight: "07:30", breakfast: "08:30", lunch: "12:30", dinner: "19:00" },
 };
-const ITEMS: { key: ReminderKey; label: string; copy: string }[] = [
-  { key: "weight", label: "Weigh-in", copy: "Step on the scale and log today's weight ⚖️" },
-  { key: "breakfast", label: "Breakfast", copy: "Log your breakfast 🍳" },
-  { key: "lunch", label: "Lunch", copy: "Lunch time — don't forget to log it 🥗" },
-  { key: "dinner", label: "Dinner", copy: "Log dinner to close out your day 🍽️" },
+const ITEMS: { key: ReminderKey; label: string }[] = [
+  { key: "weight", label: "Weigh-in" },
+  { key: "breakfast", label: "Breakfast" },
+  { key: "lunch", label: "Lunch" },
+  { key: "dinner", label: "Dinner" },
 ];
 
 function load(): Reminders {
@@ -30,90 +31,153 @@ function load(): Reminders {
   }
 }
 
-function msUntil(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  const now = new Date();
-  const t = new Date();
-  t.setHours(h, m, 0, 0);
-  if (t.getTime() <= now.getTime()) t.setDate(t.getDate() + 1);
-  return t.getTime() - now.getTime();
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+const tz = () => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
+};
+
+// Safari's requestPermission() historically only supports the legacy callback
+// signature and resolves its Promise to `undefined` — read Notification.permission
+// afterward as the source of truth instead of trusting the resolved value.
+function requestPermissionCompat(): Promise<NotificationPermission> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (p?: NotificationPermission) => {
+      if (settled) return;
+      settled = true;
+      resolve(p || Notification.permission);
+    };
+    try {
+      const maybePromise = Notification.requestPermission(finish as (p: NotificationPermission) => void);
+      if (maybePromise && typeof (maybePromise as Promise<NotificationPermission>).then === "function") {
+        (maybePromise as Promise<NotificationPermission>).then(finish, finish);
+      }
+    } catch {
+      finish();
+    }
+  });
 }
 
 export default function RemindersCard() {
   const [r, setR] = useState<Reminders>(DEFAULTS);
-  const [perm, setPerm] = useState<NotificationPermission | "unsupported">("default");
-  const [hydrated, setHydrated] = useState(false);
-  const [tested, setTested] = useState(false);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const [supported, setSupported] = useState<boolean | null>(null);
+  const [perm, setPerm] = useState<NotificationPermission>("default");
+  const [busy, setBusy] = useState(false);
+  const [tested, setTested] = useState<"idle" | "sent" | "fail">("idle");
+  const [showSetup, setShowSetup] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const setup = useRef<{ cronSecret: string; cronUrl: string } | null>(null);
+  const vapid = useRef<string | null>(null);
 
-  // hydrate from localStorage on mount (client only)
   useEffect(() => {
+    const ok = "Notification" in window && "serviceWorker" in navigator && "PushManager" in window;
+    setSupported(ok);
+    if (ok) setPerm(Notification.permission);
     setR(load());
-    setPerm("Notification" in window ? Notification.permission : "unsupported");
-    setHydrated(true);
   }, []);
 
-  // persist + (re)arm the in-app scheduler whenever settings change
-  useEffect(() => {
-    if (!hydrated) return;
-    localStorage.setItem(KEY, JSON.stringify(r));
+  const persist = (next: Reminders) => {
+    setR(next);
+    try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  };
 
-    timers.current.forEach(clearTimeout);
-    timers.current = [];
-    if (!r.enabled || perm !== "granted") return;
-
-    for (const { key, copy } of ITEMS) {
-      const time = r.times[key];
-      if (!time) continue;
-      const arm = (delay: number) => {
-        const id = setTimeout(() => {
-          try {
-            new Notification("Cut", { body: copy, tag: `cut-${key}`, icon: "/icon" });
-          } catch { /* ignore */ }
-          arm(24 * 60 * 60 * 1000); // same time tomorrow
-        }, delay);
-        timers.current.push(id);
-      };
-      arm(msUntil(time));
-    }
-    return () => { timers.current.forEach(clearTimeout); timers.current = []; };
-  }, [r, perm, hydrated]);
-
-  // Safari (and old browsers) implement requestPermission with a callback and
-  // resolve the promise to `undefined`. Support both, then trust the canonical
-  // Notification.permission value rather than the return.
-  function requestPermissionCompat(): Promise<NotificationPermission> {
-    return new Promise((resolve) => {
-      let settled = false;
-      const done = () => { if (!settled) { settled = true; resolve(Notification.permission); } };
-      try {
-        const maybe = Notification.requestPermission(done);
-        if (maybe && typeof (maybe as Promise<NotificationPermission>).then === "function") {
-          (maybe as Promise<NotificationPermission>).then(done, done);
-        }
-      } catch {
-        done();
+  // get the active push subscription, subscribing if needed
+  const getSubscription = useCallback(async (): Promise<PushSubscription | null> => {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      if (!vapid.current) {
+        const info = await api.getPush();
+        vapid.current = info.vapidPublicKey;
+        setup.current = { cronSecret: info.cronSecret, cronUrl: info.cronUrl };
       }
-    });
-  }
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapid.current) as BufferSource,
+      });
+    } else if (!setup.current) {
+      const info = await api.getPush().catch(() => null);
+      if (info) setup.current = { cronSecret: info.cronSecret, cronUrl: info.cronUrl };
+    }
+    return sub;
+  }, []);
+
+  const syncToServer = useCallback(async (next: Reminders, test = false) => {
+    const sub = await getSubscription();
+    if (!sub) throw new Error("Could not subscribe to notifications.");
+    await api.savePush({ subscription: sub.toJSON() as PushSubscriptionJSON, reminders: next, timezone: tz(), test });
+  }, [getSubscription]);
 
   async function enable() {
-    if (!("Notification" in window)) return;
-    if (Notification.permission !== "granted") await requestPermissionCompat();
-    const p = Notification.permission; // authoritative, post-prompt
-    setPerm(p);
-    if (p === "granted") setR((x) => ({ ...x, enabled: true }));
+    if (supported !== true) return;
+    setBusy(true);
+    try {
+      let p = Notification.permission;
+      if (p !== "granted") p = await requestPermissionCompat();
+      setPerm(p);
+      if (p !== "granted") return;
+      const next = { ...r, enabled: true };
+      await syncToServer(next);
+      persist(next);
+      setShowSetup(true); // surface delivery setup the first time
+    } catch (e) {
+      console.error(e);
+      alert((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function test() {
-    if (perm !== "granted") return;
-    new Notification("Cut", { body: "Reminders are on — you'll get nudges to log meals and weigh in. ✅", icon: "/icon" });
-    setTested(true);
-    setTimeout(() => setTested(false), 2000);
+  async function disable() {
+    setBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager.getSubscription();
+      if (sub) { await api.deletePush(sub.endpoint).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
+      persist({ ...r, enabled: false });
+    } finally {
+      setBusy(false);
+    }
   }
 
-  const unsupported = perm === "unsupported";
-  const blocked = perm === "denied";
+  // push schedule changes to the server while enabled (debounced)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function setTime(key: ReminderKey, value: string) {
+    const next = { ...r, times: { ...r.times, [key]: value } };
+    persist(next);
+    if (!next.enabled || perm !== "granted") return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { syncToServer(next).catch(() => {}); }, 600);
+  }
+
+  async function test() {
+    setBusy(true);
+    try {
+      const res = await api.savePush({ subscription: (await getSubscription())!.toJSON() as PushSubscriptionJSON, reminders: r, timezone: tz(), test: true });
+      setTested(res.ok ? "sent" : "fail");
+    } catch {
+      setTested("fail");
+    } finally {
+      setBusy(false);
+      setTimeout(() => setTested("idle"), 2500);
+    }
+  }
+
+  function copySecret() {
+    if (!setup.current) return;
+    navigator.clipboard?.writeText(setup.current.cronSecret).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  }
+
+  const on = r.enabled && perm === "granted";
 
   return (
     <section className="glass card p-4 mb-4">
@@ -124,27 +188,34 @@ export default function RemindersCard() {
           </span>
           <div className="min-w-0">
             <p className="text-sm font-semibold">Reminders</p>
-            <p className="text-xs text-[var(--muted)]">Nudges to log meals & your weight</p>
+            <p className="text-xs text-[var(--muted)]">Nudges to log meals &amp; your weight</p>
           </div>
         </div>
-        {!unsupported && (
+        {supported === true && (
           <button
             role="switch"
-            aria-checked={r.enabled && perm === "granted"}
+            aria-checked={on}
             aria-label="Enable reminders"
-            onClick={() => (r.enabled ? setR((x) => ({ ...x, enabled: false })) : enable())}
-            className="relative w-12 h-7 rounded-full flex-shrink-0 transition-colors pressable"
-            style={{ background: r.enabled && perm === "granted" ? "var(--p-cal)" : "rgba(255,255,255,0.12)" }}
+            disabled={busy}
+            onClick={() => (r.enabled ? disable() : enable())}
+            className="relative w-12 h-7 rounded-full flex-shrink-0 transition-colors pressable disabled:opacity-60"
+            style={{ background: on ? "var(--p-cal)" : "rgba(255,255,255,0.12)" }}
           >
-            <span className="absolute top-0.5 w-6 h-6 rounded-full bg-white transition-all" style={{ left: r.enabled && perm === "granted" ? "22px" : "2px" }} />
+            <span className="absolute top-0.5 w-6 h-6 rounded-full bg-white transition-all" style={{ left: on ? "22px" : "2px" }} />
           </button>
         )}
       </div>
 
-      {unsupported && <p className="text-xs text-[var(--muted)] mt-3">This device doesn&apos;t support notifications.</p>}
-      {blocked && <p className="text-xs mt-3" style={{ color: "var(--p-warn)" }}>Notifications are blocked in your browser settings — enable them there to use reminders.</p>}
+      {supported === false && (
+        <p className="text-xs text-[var(--muted)] mt-3">
+          To get reminders on iPhone, add Cut to your Home Screen first (Share → Add to Home Screen), then open it from there. On desktop, use Chrome, Edge, Safari, or Firefox.
+        </p>
+      )}
+      {supported === true && perm === "denied" && (
+        <p className="text-xs mt-3" style={{ color: "var(--p-warn)" }}>Notifications are blocked in your browser settings — enable them there to use reminders.</p>
+      )}
 
-      {r.enabled && perm === "granted" && (
+      {on && (
         <div className="mt-4 flex flex-col gap-2.5 rise">
           {ITEMS.map(({ key, label }) => (
             <label key={key} className="flex items-center justify-between gap-3">
@@ -152,17 +223,37 @@ export default function RemindersCard() {
               <input
                 type="time"
                 value={r.times[key]}
-                onChange={(e) => setR((x) => ({ ...x, times: { ...x.times, [key]: e.target.value } }))}
+                onChange={(e) => setTime(key, e.target.value)}
                 className="field tabular !w-auto !py-2 !px-3"
                 aria-label={`${label} reminder time`}
               />
             </label>
           ))}
-          <button onClick={test} className="btn btn-ghost mt-1 !py-2.5 text-sm">
-            {tested ? <><CheckIcon width={16} height={16} /> Sent</> : "Send a test notification"}
+
+          <button onClick={test} disabled={busy} className="btn btn-ghost mt-1 !py-2.5 text-sm">
+            {tested === "sent" ? <><CheckIcon width={16} height={16} /> Sent — check your notifications</> : tested === "fail" ? "Couldn't send — see setup below" : "Send a test notification"}
           </button>
+
+          {/* delivery setup — the free cron that fires reminders when the app is closed */}
+          <button onClick={() => setShowSetup((s) => !s)} className="flex items-center justify-between text-xs text-[var(--muted)] mt-1 pressable" aria-expanded={showSetup}>
+            <span>One-time delivery setup</span>
+            <ChevronDown width={14} height={14} style={{ transform: showSetup ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+          </button>
+          {showSetup && (
+            <div className="text-[11px] text-[var(--muted)] leading-relaxed flex flex-col gap-2 rise" style={{ background: "rgba(255,255,255,0.03)", borderRadius: 12, padding: "10px 12px" }}>
+              <p>Reminders are sent by a free scheduler that pings Cut every few minutes. A GitHub Action is already included in the repo — just add this secret once:</p>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 truncate text-[var(--fg)]" style={{ background: "rgba(255,255,255,0.05)", borderRadius: 8, padding: "4px 8px" }}>
+                  CRON_SECRET = {setup.current ? `${setup.current.cronSecret.slice(0, 10)}…` : "…"}
+                </code>
+                <button onClick={copySecret} className="chip pressable flex-shrink-0">{copied ? "Copied" : "Copy"}</button>
+              </div>
+              <p>Add it at <span className="text-[var(--fg)]">GitHub → repo → Settings → Secrets → Actions → New secret</span>. No GitHub? Paste the full cron URL into any free scheduler (cron-job.org) on a 5-minute interval.</p>
+            </div>
+          )}
+
           <p className="text-[11px] text-[var(--faint)] leading-relaxed">
-            Reminders fire while Cut is open or running in the background. Add Cut to your home screen for the most reliable nudges.
+            On iPhone, open Cut from your Home Screen for notifications to arrive.
           </p>
         </div>
       )}

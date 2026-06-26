@@ -132,6 +132,27 @@ const SCHEMA_SQL = `
     gemini_model   TEXT,
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  -- one row ('global') holding the self-generated VAPID keypair + cron secret
+  CREATE TABLE IF NOT EXISTS server_keys (
+    id            TEXT PRIMARY KEY,
+    vapid_public  TEXT NOT NULL,
+    vapid_private TEXT NOT NULL,
+    cron_secret   TEXT NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  -- web-push subscriptions + each device's reminder schedule, for server-sent
+  -- reminders that fire even when the app is closed.
+  CREATE TABLE IF NOT EXISTS push_subs (
+    endpoint   TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    timezone   TEXT NOT NULL DEFAULT 'UTC',
+    reminders  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    last_sent  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS push_subs_user_idx ON push_subs (user_id);
 `;
 
 /** Creates tables on first use. Idempotent. One round trip. */
