@@ -7,6 +7,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+const GOAL_VERB: Record<string, string> = { cut: "cutting", maintain: "maintaining their weight", gain: "lean bulking" };
+
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
@@ -27,7 +29,10 @@ export async function POST(req: NextRequest) {
       SELECT name, COUNT(*) AS c FROM food_logs WHERE user_id = ${userId}
       GROUP BY name ORDER BY c DESC LIMIT 10`;
 
-    const suggestion = await suggestMeal({ userId, remaining, meal, craving, recentFavorites: favs.map((f) => f.name) });
+    const prof = await sql<{ goal_type: string }[]>`SELECT goal_type FROM profile WHERE id = ${userId}`;
+    const goal = GOAL_VERB[prof[0]?.goal_type ?? "cut"] ?? "cutting";
+
+    const suggestion = await suggestMeal({ userId, remaining, meal, craving, recentFavorites: favs.map((f) => f.name), goal });
     return NextResponse.json({ suggestion });
   } catch (e) {
     const { status, body } = aiErrorPayload(e);

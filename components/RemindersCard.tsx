@@ -2,21 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { Bell, CheckIcon, ChevronDown } from "@/components/Icons";
+import { REMINDERS_KEY as KEY, syncBadge } from "@/lib/badge";
+import { Bell, CheckIcon, ChevronDown, SparkIcon } from "@/components/Icons";
 
-type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner";
+type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner" | "recap";
+// a time of "" means that reminder is switched off
 type Reminders = { enabled: boolean; times: Record<ReminderKey, string> };
 
-const KEY = "cut.reminders.v1";
-const DEFAULTS: Reminders = {
-  enabled: false,
-  times: { weight: "07:30", breakfast: "08:30", lunch: "12:30", dinner: "19:00" },
+const DEFAULT_TIMES: Record<ReminderKey, string> = {
+  weight: "07:30", breakfast: "08:30", lunch: "12:30", dinner: "19:00", recap: "21:00",
 };
-const ITEMS: { key: ReminderKey; label: string }[] = [
+const DEFAULTS: Reminders = { enabled: false, times: DEFAULT_TIMES };
+const ITEMS: { key: ReminderKey; label: string; hint?: string }[] = [
   { key: "weight", label: "Weigh-in" },
   { key: "breakfast", label: "Breakfast" },
   { key: "lunch", label: "Lunch" },
   { key: "dinner", label: "Dinner" },
+  { key: "recap", label: "Evening check-in", hint: "Only if a meal is still unlogged" },
 ];
 
 function load(): Reminders {
@@ -74,6 +76,7 @@ export default function RemindersCard() {
   const [tested, setTested] = useState<"idle" | "scheduled" | "fail">("idle");
   const [showSetup, setShowSetup] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [habitMsg, setHabitMsg] = useState<string | null>(null);
   const setup = useRef<{ cronSecret: string | null; cronUrl: string | null } | null>(null);
   const vapid = useRef<string | null>(null);
 
@@ -117,6 +120,15 @@ export default function RemindersCard() {
     await api.savePush({ subscription: sub.toJSON() as PushSubscriptionJSON, reminders: next, timezone: tz() });
   }, [getSubscription]);
 
+  // Once per open, quietly push this device's schedule + current timezone, so the
+  // server picks up new reminder types and travel across time zones.
+  const resynced = useRef(false);
+  useEffect(() => {
+    if (resynced.current || supported !== true || perm !== "granted" || !r.enabled) return;
+    resynced.current = true;
+    syncToServer(r).catch(() => {});
+  }, [supported, perm, r, syncToServer]);
+
   async function enable() {
     if (supported !== true) return;
     setBusy(true);
@@ -144,6 +156,7 @@ export default function RemindersCard() {
       const sub = await reg?.pushManager.getSubscription();
       if (sub) { await api.deletePush(sub.endpoint).catch(() => {}); await sub.unsubscribe().catch(() => {}); }
       persist({ ...r, enabled: false });
+      syncBadge([]); // reminders off → no badge
     } finally {
       setBusy(false);
     }
@@ -151,12 +164,34 @@ export default function RemindersCard() {
 
   // push schedule changes to the server while enabled (debounced)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function setTime(key: ReminderKey, value: string) {
-    const next = { ...r, times: { ...r.times, [key]: value } };
+  function saveTimes(times: Reminders["times"]) {
+    const next = { ...r, times };
     persist(next);
     if (!next.enabled || perm !== "granted") return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => { syncToServer(next).catch(() => {}); }, 600);
+  }
+  const setTime = (key: ReminderKey, value: string) => saveTimes({ ...r.times, [key]: value });
+  const toggleItem = (key: ReminderKey) => setTime(key, r.times[key] ? "" : DEFAULT_TIMES[key]);
+
+  // "Match my habits": set times from when you actually log (see /api/habits)
+  async function matchHabits() {
+    setBusy(true);
+    setHabitMsg(null);
+    try {
+      const { times } = await api.getHabits(tz());
+      const picked = (Object.keys(times) as ReminderKey[]).filter((k) => k in DEFAULT_TIMES && r.times[k]);
+      if (!picked.length) {
+        setHabitMsg("Not enough history yet — log for a few more days and try again.");
+        return;
+      }
+      saveTimes({ ...r.times, ...Object.fromEntries(picked.map((k) => [k, times[k]])) });
+      setHabitMsg(`Updated ${picked.length} reminder${picked.length === 1 ? "" : "s"} to match when you usually log.`);
+    } catch {
+      setHabitMsg("Couldn't load your history — try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   // Schedules a synthetic "test" reminder for right now and routes it through
@@ -225,18 +260,49 @@ export default function RemindersCard() {
 
       {on && (
         <div className="mt-4 flex flex-col gap-2.5 rise">
-          {ITEMS.map(({ key, label }) => (
-            <label key={key} className="flex items-center justify-between gap-3">
-              <span className="text-sm">{label}</span>
-              <input
-                type="time"
-                value={r.times[key]}
-                onChange={(e) => setTime(key, e.target.value)}
-                className="field tabular !w-auto !py-2 !px-3"
-                aria-label={`${label} reminder time`}
-              />
-            </label>
-          ))}
+          {ITEMS.map(({ key, label, hint }) => {
+            const itemOn = !!r.times[key];
+            return (
+              <div key={key} className="flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={itemOn}
+                  aria-label={`${label} reminder`}
+                  onClick={() => toggleItem(key)}
+                  className="flex items-center gap-2.5 min-w-0 text-left pressable"
+                >
+                  <span className="relative w-8 h-5 rounded-full flex-shrink-0 transition-colors" style={{ background: itemOn ? "var(--p-cal)" : "rgba(255,255,255,0.12)" }}>
+                    <span className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all" style={{ left: itemOn ? "14px" : "2px" }} />
+                  </span>
+                  <span className="min-w-0">
+                    <span className={`block text-sm ${itemOn ? "" : "text-[var(--faint)]"}`}>{label}</span>
+                    {hint && <span className="block text-[11px] text-[var(--faint)] leading-tight">{hint}</span>}
+                  </span>
+                </button>
+                {itemOn ? (
+                  <input
+                    type="time"
+                    value={r.times[key]}
+                    onChange={(e) => e.target.value && setTime(key, e.target.value)}
+                    className="field tabular !w-auto !py-2 !px-3"
+                    aria-label={`${label} reminder time`}
+                  />
+                ) : (
+                  <span className="text-xs text-[var(--faint)] pr-1">Off</span>
+                )}
+              </div>
+            );
+          })}
+
+          <p className="text-[11px] text-[var(--muted)] leading-relaxed">
+            Reminders skip anything you&apos;ve already logged, and tapping one opens the right screen. The app icon shows a badge for unlogged meals.
+          </p>
+
+          <button onClick={matchHabits} disabled={busy} className="btn btn-ghost !py-2.5 text-sm">
+            <SparkIcon width={15} height={15} /> Match my habits
+          </button>
+          {habitMsg && <p className="text-[11px] text-[var(--muted)] -mt-1">{habitMsg}</p>}
 
           <button onClick={test} disabled={busy} className="btn btn-ghost mt-1 !py-2.5 text-sm">
             {tested === "scheduled" ? <><CheckIcon width={16} height={16} /> Scheduled — wait ~1 min for the real cron job</> : tested === "fail" ? "Couldn't schedule — try again" : "Test via real cron job"}

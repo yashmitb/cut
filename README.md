@@ -4,11 +4,11 @@ A minimal, liquid-glass calorie tracker built for cutting. Snap a photo of your
 food, an AI reads the plate, and your day's calories + macros update
 automatically. Black-and-white UI, pastel charts, full dark mode.
 
-![stack](https://img.shields.io/badge/Next.js-16-black) ![ai](https://img.shields.io/badge/Gemini-2.5%20Pro-c9b8f0) ![db](https://img.shields.io/badge/Postgres-cloud%20sync-a8d0f0)
+![stack](https://img.shields.io/badge/Next.js-16-black) ![ai](https://img.shields.io/badge/Gemini-2.5%20Flash-c9b8f0) ![db](https://img.shields.io/badge/Postgres-cloud%20sync-a8d0f0)
 
 ## Features
 
-- **📸 Snap & log** — photograph a meal; Gemini 2.5 Pro estimates each item's
+- **📸 Snap & log** — photograph a meal; Gemini estimates each item's
   calories, protein, carbs, fat, fiber, sugar & sodium, with a **confidence
   score per item**. Low-confidence items get flagged before they're added.
 - **💬 Coach that learns** — correct the AI in plain English ("that's 1 cup of
@@ -31,7 +31,8 @@ automatically. Black-and-white UI, pastel charts, full dark mode.
 - **📱 Installable (PWA)** — add it to your phone's home screen and it runs
   full-screen like a native app, offline shell included.
 - **🔄 Cloud sync** — log on your phone, review on your laptop. Everything's in Postgres.
-- **💧 Extras** — water tracking, daily reset, inline-editable items, weight logging.
+- **🔔 Reminders** — push notifications for meals and weigh-ins, even with the app closed.
+- **✨ Extras** — Cut AI Q&A chat, favorites, combos, adaptive TDEE, CSV export, weight logging.
 
 ## Nutrition model (the research)
 
@@ -100,7 +101,7 @@ Open http://localhost:3000 — you'll be taken through onboarding first.
    `GEMINI_MODEL`, and `DATABASE_URL`.
 3. Deploy. The database schema auto-creates on the first request.
 
-Since it's just for you, there's no auth — all data lives under a single user.
+Without Supabase configured it runs single-user with no sign-in (see below).
 
 ## Authentication & multi-user sync (Supabase)
 

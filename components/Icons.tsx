@@ -34,6 +34,9 @@ import {
   Download,
   PartyPopper,
   Target,
+  Smartphone,
+  Zap,
+  Mic,
   type LucideIcon,
 } from "lucide-react";
 import type { MealType } from "@/lib/types";
@@ -54,7 +57,7 @@ export const ChevronRight = LChevronRight;
 export const PencilIcon = Pencil;
 export const ImageIcon = LImage;
 export const ScaleIcon = Scale;
-export { Flame, Sprout, Layers, ChevronDown, Search, BookOpen, Bell, Target };
+export { Flame, Sprout, Layers, ChevronDown, Search, BookOpen, Bell, Target, Smartphone, Zap, Mic };
 export const AskIcon = MessageCircleQuestion;
 export const StarIcon = Star;
 export const StarFilledIcon = (props: React.ComponentProps<typeof Star>) => <Star {...props} fill="currentColor" />;

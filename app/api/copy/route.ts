@@ -41,14 +41,17 @@ export async function POST(req: NextRequest) {
       if (r.group_id && !remap.has(r.group_id)) remap.set(r.group_id, randomUUID());
     }
 
-    for (const r of src) {
-      const gid: string | null = (r.group_id ? remap.get(r.group_id) : null) ?? null;
-      await sql`
+    // one transaction so a retried request can't leave a half-copied day
+    await sql.begin(async (tx) => {
+      for (const r of src) {
+        const gid: string | null = (r.group_id ? remap.get(r.group_id) : null) ?? null;
+        await tx`
         INSERT INTO food_logs (user_id, log_date, name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium, confidence, meal, source, group_id, group_label)
         VALUES (${userId}, ${to}, ${r.name}, ${r.quantity}, ${r.calories}, ${r.protein}, ${r.carbs},
                 ${r.fat}, ${r.fiber}, ${r.sugar}, ${r.sodium}, ${r.confidence ?? null}, ${r.meal}, 'quick',
                 ${gid}, ${r.group_label})`;
-    }
+      }
+    });
 
     const items = await sql<FoodLog[]>`
       SELECT id, log_date::text AS log_date, name, quantity, calories, protein, carbs, fat,

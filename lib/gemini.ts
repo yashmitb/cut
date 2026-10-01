@@ -447,8 +447,9 @@ export async function suggestMeal(opts: {
   meal: string;
   craving?: string;
   recentFavorites?: string[];
+  goal?: string; // e.g. "cutting", "maintaining", "lean bulking"
 }): Promise<import("./types").MealSuggestion> {
-  const { userId, remaining, meal, craving = "", recentFavorites = [] } = opts;
+  const { userId, remaining, meal, craving = "", recentFavorites = [], goal = "cutting" } = opts;
   const favs = recentFavorites.length
     ? `\nThings they eat often: ${recentFavorites.slice(0, 10).join(", ")}.`
     : "";
@@ -460,7 +461,7 @@ export async function suggestMeal(opts: {
   const res = await runWithModels(textModel, (model) =>
     clientFor(key).models.generateContent({
       model,
-      contents: `The user is cutting and has these macros LEFT for today:
+      contents: `The user is ${goal} and has these macros LEFT for today:
 - ${remaining.calories} kcal
 - ${remaining.protein} g protein
 - ${remaining.carbs} g carbs
@@ -471,7 +472,7 @@ It's around ${meal} time. ${wants}${favs}
 Suggest ONE specific dish that fits what's left, prioritising hitting the PROTEIN target without exceeding the remaining calories (a little under is fine). Give a real, cookable recipe: realistic ingredients with amounts, and short prep steps. Fill in the macro fields with the totals for the whole recipe as you describe it. If almost no calories remain, suggest something light and high-volume.`,
       config: {
         systemInstruction:
-          "You are a sports dietitian and recipe writer helping someone on a cut. Recipes must be realistic, simple, and high-protein. Return only the structured fields.",
+          `You are a sports dietitian and recipe writer helping someone who is ${goal}. Recipes must be realistic, simple, and high-protein. Return only the structured fields.`,
         responseMimeType: "application/json",
         responseSchema: suggestionSchema,
         temperature: 0.8,
@@ -520,7 +521,7 @@ export async function askCoach(opts: {
       contents,
       config: {
         systemInstruction:
-          `You are Cut's nutrition coach — a friendly, sharp sports dietitian for someone actively cutting (losing fat while keeping muscle). Answer their question directly and practically in a few short sentences. When they ask how many calories or macros are in something, give a concrete number (your best estimate for a typical serving and preparation) — never stop at "it depends." When they compare two foods or options, pick a clear winner and say why in one line, citing the key numbers that matter on a cut (calories and protein first). Personalize using their context below when relevant. Be encouraging and concrete, never preachy; skip medical disclaimers unless genuinely warranted. Plain text; short bullet points are fine.\n\nUSER CONTEXT (today):\n${context}`,
+          `You are Cut's nutrition coach — a friendly, sharp sports dietitian. Their goal (cut, maintain, or lean bulk) is in the context below; tailor advice to it. Answer their question directly and practically in a few short sentences. When they ask how many calories or macros are in something, give a concrete number (your best estimate for a typical serving and preparation) — never stop at "it depends." When they compare two foods or options, pick a clear winner and say why in one line, citing the key numbers that matter for their goal (calories and protein first). Personalize using their context below when relevant. Be encouraging and concrete, never preachy; skip medical disclaimers unless genuinely warranted. Plain text; short bullet points are fine.\n\nUSER CONTEXT (today):\n${context}`,
         temperature: 0.6,
         maxOutputTokens: 1024,
         // flash models otherwise spend the output budget on hidden "thinking"

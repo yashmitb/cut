@@ -5,6 +5,7 @@ import { computeTargets, todayLocal } from "@/lib/nutrition";
 import type { Activity, GoalType, Profile, Rate, Sex, Units } from "@/lib/types";
 
 const GOAL_TYPES: GoalType[] = ["cut", "maintain", "gain"];
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,10 +67,12 @@ export async function POST(req: NextRequest) {
         target_fiber = EXCLUDED.target_fiber, updated_at = now()
     `;
 
-    // seed today's weight so the progress chart has a starting point
+    // seed today's weight so the progress chart has a starting point. Use the
+    // client's local date — todayLocal() here would be the server's (UTC) day.
+    const today = typeof b.date === "string" && DATE_RE.test(b.date) ? b.date : todayLocal();
     await sql`
       INSERT INTO weight_logs (user_id, log_date, weight_kg)
-      VALUES (${userId}, ${todayLocal()}, ${input.weight_kg})
+      VALUES (${userId}, ${today}, ${input.weight_kg})
       ON CONFLICT (user_id, log_date) DO UPDATE SET weight_kg = EXCLUDED.weight_kg
     `;
 

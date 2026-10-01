@@ -22,6 +22,7 @@ import {
 import { api } from "@/lib/api";
 import { sumTotals, relativeDay } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
+import { syncBadge } from "@/lib/badge";
 import { MEAL_META, MEAL_ORDER } from "@/lib/types";
 import type { DayTotals, FoodLog, GoalType, Profile } from "@/lib/types";
 
@@ -116,6 +117,12 @@ function TodayInner() {
       console.error(e);
     }
   }
+
+  // keep the app-icon badge in step with what's actually logged today
+  useEffect(() => {
+    if (!profile || date !== today) return;
+    syncBadge(items.map((i) => i.meal));
+  }, [items, profile, date, today]);
 
   // celebrate hitting the protein target — the one number that matters most on a
   // cut. Fires at most once per day per session so it's a treat, not a nag.

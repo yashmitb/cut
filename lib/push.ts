@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { sql } from "./db";
+import { parseHHMM } from "./reminders";
 
 // ---------------------------------------------------------------------------
 // Web Push plumbing. VAPID keys + the cron secret are generated once and stored
@@ -47,7 +48,8 @@ export async function ensureWebPushConfigured(): Promise<ServerKeys> {
 
 // "test" is a synthetic key used only by the "test via real cron" button —
 // it runs through the exact same dueReminders/cron path as a real reminder.
-export type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner" | "test";
+// "recap" is the evening check-in that only fires if something's unlogged.
+export type ReminderKey = "weight" | "breakfast" | "lunch" | "dinner" | "recap" | "test";
 export interface ReminderConfig {
   enabled: boolean;
   times: Partial<Record<ReminderKey, string>>; // "HH:MM"
@@ -58,6 +60,7 @@ export const REMINDER_COPY: Record<ReminderKey, string> = {
   breakfast: "Log your breakfast 🍳",
   lunch: "Lunch time — don't forget to log it 🥗",
   dinner: "Log dinner to close out your day 🍽️",
+  recap: "Close out your day — anything left to log?",
   test: "Cron test — this came from the real scheduled job ⏰",
 };
 
@@ -84,13 +87,6 @@ export function localNow(now: Date, timezone: string): { date: string; minutes: 
   let hour = parseInt(get("hour"), 10);
   if (hour === 24) hour = 0; // some engines emit 24 at midnight
   return { date: `${get("year")}-${get("month")}-${get("day")}`, minutes: hour * 60 + parseInt(get("minute"), 10) };
-}
-
-function parseHHMM(s: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(s || "");
-  if (!m) return null;
-  const min = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
-  return min >= 0 && min < 1440 ? min : null;
 }
 
 /**
@@ -125,12 +121,41 @@ export interface StoredSub {
   last_sent: Partial<Record<ReminderKey, string>>;
 }
 
+export interface PushMessage {
+  title: string;
+  body: string;
+  navigate: string; // absolute URL opened when the notification is tapped
+  badge?: number; // app-icon badge count (0 clears it)
+}
+
+/**
+ * Declarative Web Push payload (RFC 8030 magic key). iOS 18.4+ Home Screen
+ * apps show it natively — tap opens `navigate`, `app_badge` sets the icon
+ * badge, no service-worker round trip (which is unreliable for deep links on
+ * iOS). Everywhere else the service worker's push handler reads the same
+ * `notification` object. No `mutable` key, so Safari never runs both.
+ */
+export function pushPayload(m: PushMessage): string {
+  return JSON.stringify({
+    web_push: 8030,
+    notification: {
+      title: m.title,
+      body: m.body,
+      navigate: m.navigate,
+      lang: "en-US",
+      dir: "ltr",
+      silent: false,
+      ...(m.badge != null ? { app_badge: String(m.badge) } : {}),
+    },
+  });
+}
+
 /** Send one push; returns false (and signals caller to prune) on 404/410. */
-export async function sendPush(sub: StoredSub, title: string, body: string): Promise<{ ok: boolean; gone: boolean }> {
+export async function sendPush(sub: StoredSub, msg: PushMessage): Promise<{ ok: boolean; gone: boolean }> {
   try {
     await webpush.sendNotification(
       { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-      JSON.stringify({ title, body })
+      pushPayload(msg)
     );
     return { ok: true, gone: false };
   } catch (e) {

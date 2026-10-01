@@ -51,14 +51,18 @@ export async function POST(req: NextRequest) {
     if (!items.length) {
       return NextResponse.json({ error: "No items to add." }, { status: 400 });
     }
-    for (const it of items) {
-      await sql`
+    // one transaction: a mid-loop failure must not leave partial rows, since
+    // the client auto-retries 5xx and would re-insert the ones that landed
+    await sql.begin(async (tx) => {
+      for (const it of items) {
+        await tx`
         INSERT INTO food_logs (user_id, log_date, name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium, confidence, meal, source, group_id, group_label)
         VALUES (${userId}, ${date}, ${it.name}, ${it.quantity || ""}, ${it.calories || 0},
                 ${it.protein || 0}, ${it.carbs || 0}, ${it.fat || 0}, ${it.fiber || 0},
                 ${it.sugar || 0}, ${it.sodium || 0}, ${it.confidence ?? null}, ${meal}, ${source},
                 ${groupId}, ${groupLabel})`;
-    }
+      }
+    });
     return NextResponse.json({ items: await fetchDay(userId, date) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
+import { todayLocal } from "@/lib/nutrition";
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +24,10 @@ export async function GET(req: NextRequest) {
     const userId = await getUserId();
     if (!userId) return unauthorized();
     const days = Math.min(365, Math.max(7, Number(req.nextUrl.searchParams.get("days")) || 30));
+    // Anchor on the client's local day — the server clock (and CURRENT_DATE) is
+    // UTC, which in US evenings is already "tomorrow".
+    const qToday = req.nextUrl.searchParams.get("today");
+    const today = qToday && DATE_RE.test(qToday) ? qToday : todayLocal();
 
     const nutrition = await sql<
       { date: string; calories: number; protein: number; carbs: number; fat: number; fiber: number }[]
@@ -32,13 +39,13 @@ export async function GET(req: NextRequest) {
              ROUND(SUM(fat))::int AS fat,
              ROUND(SUM(fiber))::int AS fiber
       FROM food_logs
-      WHERE user_id = ${userId} AND log_date >= CURRENT_DATE - ${days}::int
+      WHERE user_id = ${userId} AND log_date > ${today}::date - ${days}::int AND log_date <= ${today}::date
       GROUP BY log_date ORDER BY log_date ASC`;
 
     const weights = await sql<{ date: string; weight_kg: number }[]>`
       SELECT log_date::text AS date, weight_kg
       FROM weight_logs
-      WHERE user_id = ${userId} AND log_date >= CURRENT_DATE - ${days}::int
+      WHERE user_id = ${userId} AND log_date > ${today}::date - ${days}::int AND log_date <= ${today}::date
       ORDER BY log_date ASC`;
 
     const wMap = new Map(weights.map((w) => [w.date, w.weight_kg]));
@@ -46,11 +53,9 @@ export async function GET(req: NextRequest) {
 
     // build a continuous date axis so charts don't skip days
     const out: DayRow[] = [];
-    const today = new Date();
+    const [y, m, dd] = today.split("-").map(Number);
     for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
+      const key = new Date(Date.UTC(y, m - 1, dd - i)).toISOString().slice(0, 10);
       const n = nMap.get(key);
       out.push({
         date: key,

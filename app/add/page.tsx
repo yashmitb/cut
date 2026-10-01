@@ -68,7 +68,19 @@ function AddInner() {
   const date = qDate && DATE_RE.test(qDate) ? qDate : todayLocal();
   const qMeal = params.get("meal") as MealType | null;
 
-  const [meal, setMeal] = useState<MealType>(qMeal && MEAL_ORDER.includes(qMeal) ? qMeal : mealForHour(new Date().getHours()));
+  const qMealValid = qMeal && MEAL_ORDER.includes(qMeal) ? qMeal : null;
+  const [meal, setMeal] = useState<MealType>(qMealValid ?? "snack");
+  // Pick the time-of-day meal only on the client: the server renders in UTC, so
+  // its hour (and meal) differs from the user's — a hydration mismatch that left
+  // the wrong meal highlighted while logs went to another one.
+  const [mealPicked, setMealPicked] = useState(qMealValid != null);
+  useEffect(() => {
+    if (!mealPicked) {
+      setMeal(mealForHour(new Date().getHours()));
+      setMealPicked(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [stage, setStage] = useState<"input" | "loading" | "review">("input");
   const [loadingMsg, setLoadingMsg] = useState("Analyzing your meal…");
   const [preview, setPreview] = useState<string | null>(null);
@@ -334,7 +346,7 @@ function AddInner() {
       {/* meal selector */}
       <div className="seg mb-4">
         {MEAL_ORDER.map((m) => (
-          <div key={m} className="seg-item !text-xs !px-1" data-on={meal === m} onClick={() => setMeal(m)}>
+          <div key={m} className="seg-item !text-xs !px-1" data-on={mealPicked && meal === m} onClick={() => setMeal(m)}>
             {MEAL_META[m].label}
           </div>
         ))}

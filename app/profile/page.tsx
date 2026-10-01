@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { isCancel } from "@/lib/retry";
 import {
@@ -21,6 +21,7 @@ import ApiKeyCard from "@/components/ApiKeyCard";
 import AccountCard from "@/components/AccountCard";
 import AppLoader from "@/components/AppLoader";
 import RemindersCard from "@/components/RemindersCard";
+import QuickLogCard from "@/components/QuickLogCard";
 
 const GOAL_TYPES: GoalType[] = ["cut", "maintain", "gain"];
 
@@ -31,6 +32,7 @@ export default function ProfilePage() {
   const [saved, setSaved] = useState(false);
   const [weightInput, setWeightInput] = useState("");
   const [weightSaved, setWeightSaved] = useState(false);
+  const weightRef = useRef<HTMLInputElement>(null);
 
   // editable fields
   const [f, setF] = useState({
@@ -62,6 +64,19 @@ export default function ProfilePage() {
       }
     })();
   }, []);
+
+  // /profile#weight (weigh-in reminder tap) → jump straight to the weight field
+  useEffect(() => {
+    if (loading) return;
+    const focusWeight = () => {
+      if (location.hash !== "#weight") return;
+      weightRef.current?.scrollIntoView({ block: "center" });
+      weightRef.current?.focus();
+    };
+    focusWeight();
+    window.addEventListener("hashchange", focusWeight);
+    return () => window.removeEventListener("hashchange", focusWeight);
+  }, [loading]);
 
   function hydrate(p: Profile) {
     const units = p.units;
@@ -169,14 +184,14 @@ export default function ProfilePage() {
       )}
 
       {/* log weight */}
-      <section className="glass card p-4 mb-4">
+      <section id="weight" className="glass card p-4 mb-4 scroll-mt-6">
         <div className="flex items-center gap-2 mb-3">
           <span style={{ color: "var(--p-fiber)" }}><ScaleIcon width={18} height={18} /></span>
           <p className="text-sm font-semibold">Log today's weight</p>
         </div>
         <div className="flex gap-2">
           <div className="relative flex-1">
-            <input className="field tabular pr-12" inputMode="decimal" placeholder={f.weight} value={weightInput} onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.]/g, ""))} />
+            <input ref={weightRef} aria-label="Today's weight" className="field tabular pr-12" inputMode="decimal" placeholder={f.weight} value={weightInput} onChange={(e) => setWeightInput(e.target.value.replace(/[^\d.]/g, ""))} />
             <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-[var(--faint)]">{f.units === "metric" ? "kg" : "lb"}</span>
           </div>
           <button onClick={logWeight} disabled={!weightInput} className="btn btn-ghost">
@@ -187,6 +202,9 @@ export default function ProfilePage() {
 
       {/* meal reminders */}
       <RemindersCard />
+
+      {/* log without opening the app — iOS Shortcuts / Siri / Action Button */}
+      <QuickLogCard />
 
       {/* AI connection */}
       <ApiKeyCard />

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
 import { askCoach, aiErrorPayload, type ChatTurn } from "@/lib/gemini";
-import type { Profile } from "@/lib/types";
+import { GOAL_META, type Profile } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,8 +39,9 @@ export async function POST(req: NextRequest) {
       const foods = items.length
         ? items.map((i) => `${i.name}${i.quantity ? ` (${i.quantity})` : ""} ~${Math.round(i.calories)}kcal/${Math.round(i.protein)}gP`).join("; ")
         : "nothing logged yet";
+      const goal = GOAL_META[p.goal_type] ?? GOAL_META.cut;
       context =
-        `Goal: cutting (lose fat, keep muscle). Daily targets: ${p.target_calories} kcal, ` +
+        `Goal: ${goal.title} (${goal.sub.toLowerCase()}). Daily targets: ${p.target_calories} kcal, ` +
         `${p.target_protein}g protein, ${p.target_carbs}g carbs, ${p.target_fat}g fat, ${p.target_fiber}g fiber. ` +
         `Eaten so far today: ${Math.round(eaten.cal)} kcal, ${Math.round(eaten.pro)}g protein — ` +
         `${Math.max(0, p.target_calories - Math.round(eaten.cal))} kcal and ${Math.max(0, p.target_protein - Math.round(eaten.pro))}g protein left. ` +

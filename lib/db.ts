@@ -153,6 +153,16 @@ const SCHEMA_SQL = `
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS push_subs_user_idx ON push_subs (user_id);
+  -- one personal token per user for logging from iOS Shortcuts / home-screen
+  -- buttons (they can't carry the login cookie). Only a SHA-256 hash is stored.
+  CREATE TABLE IF NOT EXISTS quick_tokens (
+    token_hash   TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL UNIQUE,
+    last4        TEXT NOT NULL,
+    timezone     TEXT NOT NULL DEFAULT 'UTC',
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_used_at TIMESTAMPTZ
+  );
 `;
 
 /** Creates tables on first use. Idempotent. One round trip. */

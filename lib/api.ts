@@ -2,6 +2,7 @@
 // visible countdown (see lib/retry) instead of surfacing a raw error.
 import type { Profile, FoodLog, WeightLog, FoodItem, Favorite, AnalysisResult, MealType, DayTotals, MealSuggestion } from "./types";
 import { ApiError, withRetry } from "./retry";
+import { todayLocal } from "./nutrition";
 
 const baseUrl = typeof window !== "undefined"
   ? ""
@@ -30,7 +31,9 @@ const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.strin
 
 export const api = {
   getProfile: () => call<{ profile: Profile | null }>("Loading profile", "/api/profile"),
-  saveProfile: (body: unknown) => call<{ profile: Profile }>("Saving profile", "/api/profile", post(body)),
+  // `date` is the user's local day — the server's clock is UTC
+  saveProfile: (body: object) =>
+    call<{ profile: Profile }>("Saving profile", "/api/profile", post({ ...body, date: todayLocal() })),
 
   getToday: (date: string) =>
     call<{ profile: Profile | null; items: FoodLog[] }>("Loading your day", `/api/today?date=${date}`),
@@ -90,7 +93,19 @@ export const api = {
     call<{ weights: WeightLog[] }>("Saving weight", "/api/weight", post({ date, weight_kg })),
 
   getProgress: (days: number) =>
-    call<{ days: import("@/app/api/progress/route").DayRow[] }>("Loading progress", `/api/progress?days=${days}`),
+    call<{ days: import("@/app/api/progress/route").DayRow[] }>("Loading progress", `/api/progress?days=${days}&today=${todayLocal()}`),
+
+  getQuickToken: (tz: string) =>
+    call<{ enabled: boolean; last4?: string; created_at?: string; last_used_at?: string | null }>(
+      "Loading quick log",
+      `/api/quick/token?tz=${encodeURIComponent(tz)}`
+    ),
+  createQuickToken: (timezone: string) =>
+    call<{ token: string; last4: string }>("Creating your link", "/api/quick/token", post({ timezone })),
+  revokeQuickToken: () => call<{ ok: boolean }>("Turning off quick log", "/api/quick/token", { method: "DELETE" }),
+
+  getHabits: (tz: string) =>
+    call<{ times: Record<string, string>; counts: Record<string, number> }>("Reading your habits", `/api/habits?tz=${encodeURIComponent(tz)}`),
 
   getPush: () =>
     call<{ vapidPublicKey: string; cronSecret: string | null; cronUrl: string | null; subscriptions: number }>("Loading push", "/api/push"),
