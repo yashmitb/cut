@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
 import type { FoodItem, Favorite } from "@/lib/types";
+import { ADDED_FAT_NAMES } from "@/lib/macrocheck";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export async function GET() {
         FROM food_logs
         WHERE user_id = ${userId}
           AND created_at > now() - interval '14 days'
+          AND lower(name) <> ALL(${ADDED_FAT_NAMES})
       )
       SELECT name, quantity, calories, protein, carbs, fat, fiber, sugar, sodium,
              1.0 AS confidence, count::int AS count

@@ -64,16 +64,16 @@ export class RateLimitedError extends Error {
   }
 }
 
-// Free-tier fallback chain (all accept image input). Ordered by quality, but the
-// key insight from the rate-limit dashboard: 2.5-flash / 2.5-flash-lite only get
-// ~20 requests/day, while 3.1-flash-lite gets ~500/day — so it's the workhorse
-// fallback when the daily caps on the nicer models run out. Unknown model ids are
-// skipped automatically, so listing newer ones is safe.
+// Free-tier fallback chain (all accept image input), best first: full Flash
+// before any "lite" model, since lite models are noticeably worse at portions.
+// 2.5-flash / 2.5-flash-lite only get ~20 requests/day while 3.1-flash-lite gets
+// ~500/day — a rate-limited model is skipped immediately, so trying Flash first
+// costs at most one fast 429. Unknown model ids are skipped automatically.
 const FALLBACK_MODELS = [
+  "gemini-2.5-flash",
   "gemini-2.5-flash-lite",
   "gemini-3.1-flash-lite",
   "gemini-flash-lite-latest",
-  "gemini-2.5-flash",
 ];
 
 function modelChain(primary: string): string[] {
@@ -152,8 +152,12 @@ async function runWithModels<T>(primary: string, fn: (model: string) => Promise<
   throw new RateLimitedError();
 }
 
-/** Lighter fallback models are noticeably worse at portions — say so in the UI. */
-export const isLiteModel = (model: string) => /lite/i.test(model);
+/**
+ * True when we had to fall back to a lighter model than the one configured —
+ * those are noticeably worse at portions, so the UI says so. Someone who chose a
+ * lite model on purpose isn't warned on every estimate.
+ */
+export const fellBackToLite = (used: string, configured: string) => used !== configured && /lite/i.test(used);
 
 /** Turn any AI error into a clean HTTP payload (status + code the client uses). */
 export function aiErrorPayload(e: unknown): { status: number; body: { error: string; code?: string } } {
@@ -385,7 +389,7 @@ export async function analyzeImage(
       },
     })
   );
-  return { ...coerceResult(parseJSON(res.text ?? "{}")), model: used, lite: isLiteModel(used) };
+  return { ...coerceResult(parseJSON(res.text ?? "{}")), model: used, lite: fellBackToLite(used, visionModel) };
 }
 
 export interface ChatTurn {
@@ -439,7 +443,7 @@ export async function converse(opts: {
   // surface the conversational reply through notes for the client
   result.notes = (parsed.reply as string) || result.notes;
   const learned = typeof parsed.learned_preference === "string" ? parsed.learned_preference.trim().slice(0, 280) : "";
-  return { ...result, model: used, lite: isLiteModel(used), learned: learned || null };
+  return { ...result, model: used, lite: fellBackToLite(used, textModel), learned: learned || null };
 }
 
 /**

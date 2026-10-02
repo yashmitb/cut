@@ -530,7 +530,7 @@ function AddInner() {
           {meta.lite && (
             <div className="flex gap-2.5 p-3 rounded-2xl mb-3 text-xs" style={{ background: "rgba(247,197,159,0.08)", border: "1px solid rgba(247,197,159,0.22)" }}>
               <span style={{ color: "var(--p-warn)" }} className="flex-shrink-0"><WarnIcon width={15} height={15} /></span>
-              <span>Your free AI quota for the best model ran out, so a lighter model ({meta.model}) made this estimate. It&apos;s less accurate with portions — double-check the amounts.</span>
+              <span>The main AI model was unavailable (usually the free daily quota), so a lighter model ({meta.model}) made this estimate. It&apos;s less accurate with portions — double-check the amounts.</span>
             </div>
           )}
 

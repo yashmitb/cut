@@ -11,20 +11,31 @@ export function atwaterKcal(it: Pick<FoodItem, "protein" | "carbs" | "fat">): nu
 const ALCOHOL = /\b(beer|wine|vodka|whiskey|whisky|rum|gin|tequila|sake|cocktail|margarita|mojito|cider|seltzer|spritz|liqueur|champagne|prosecco|ipa|lager|stout|sangria)\b/i;
 
 /**
- * If an item's calories disagree with its macros by more than `tolerance`,
- * returns the macro-implied calories; otherwise null. Tiny items are skipped
- * (rounding dominates), and so are alcoholic drinks.
+ * If an item's calories can't be reconciled with its macros (beyond
+ * `tolerance`), returns the macro-implied calories to suggest; otherwise null.
+ *
+ * Fiber is counted inside carbs but yields only ~0–2 kcal/g (and protein bars
+ * count sugar alcohols similarly), so the valid range runs from "fiber at 0
+ * kcal" to plain 4/4/9 — real high-fiber foods like broccoli or beans pass.
+ * Tiny items (rounding dominates) and alcoholic drinks are skipped.
  */
 export function macroMismatch(it: FoodItem, tolerance = 0.15): number | null {
   const kcal = it.calories || 0;
-  const implied = atwaterKcal(it);
-  if (Math.max(kcal, implied) < 40) return null;
+  const high = atwaterKcal(it);
+  const fiber = Math.min(Math.max(0, it.fiber || 0), Math.max(0, it.carbs || 0));
+  const low = high - 4 * fiber;
+  if (Math.max(kcal, high) < 40) return null;
   if (ALCOHOL.test(it.name || "")) return null;
-  const off = Math.abs(kcal - implied) / Math.max(kcal, implied);
-  return off > tolerance ? Math.round(implied) : null;
+  if (kcal > high * (1 + tolerance)) return Math.round(high);
+  if (kcal < low * (1 - tolerance)) return Math.round(low);
+  return null;
 }
 
 // ---- added cooking fat -----------------------------------------------------
+// Names the AI uses for the separate cooking-fat item. These get logged with
+// most cooked meals, so recents lists skip them (starring one still works).
+export const ADDED_FAT_NAMES = ["cooking oil", "butter", "ghee", "olive oil", "oil"];
+
 // The AI itemizes cooking oil/butter separately (it can't see it in a photo),
 // so the user can set it with one tap instead of trusting a guess.
 

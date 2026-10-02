@@ -4,6 +4,7 @@ import { userForToken } from "@/lib/quick";
 import { localNow } from "@/lib/push";
 import { converse } from "@/lib/gemini";
 import { lbToKg } from "@/lib/nutrition";
+import { ADDED_FAT_NAMES } from "@/lib/macrocheck";
 import { MEAL_META, MEAL_ORDER, mealForHour, type FoodItem, type MealType } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -114,6 +115,7 @@ async function handle(req: NextRequest, p: Params): Promise<Response> {
       SELECT name FROM (
         SELECT DISTINCT ON (lower(name)) name, created_at FROM food_logs
         WHERE user_id = ${userId} AND created_at > now() - interval '14 days'
+          AND lower(name) <> ALL(${ADDED_FAT_NAMES})
         ORDER BY lower(name), created_at DESC
       ) r ORDER BY created_at DESC LIMIT 12`;
     const seen = new Set<string>();
