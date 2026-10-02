@@ -68,6 +68,7 @@ export interface FoodItem {
   sodium: number; // mg
   confidence: number; // 0..1
   assumptions?: string; // what the model assumed (oil, cooking method, etc.)
+  added_fat?: boolean; // cooking oil / butter itemized on its own (user can set the amount)
 }
 
 export interface FoodLog extends FoodItem {
@@ -120,6 +121,9 @@ export interface AnalysisResult {
   needs_clarification: boolean;
   clarification_question: string | null;
   notes: string | null;
+  cooked?: boolean; // dish was cooked with fat the camera can't see → ask how much
+  model?: string; // which Gemini model actually answered
+  lite?: boolean; // a lighter fallback model answered (free quota ran out)
 }
 
 export interface DayTotals {

@@ -1,19 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureSchema, sql } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
+import { recentCorrections, saveCorrection } from "@/lib/corrections";
 import { converse, aiErrorPayload, type ChatTurn } from "@/lib/gemini";
 import type { FoodItem } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-async function recentCorrections(userId: string): Promise<string[]> {
-  const rows = await sql<{ note: string }[]>`
-    SELECT note FROM corrections WHERE user_id = ${userId}
-    ORDER BY created_at DESC LIMIT 15`;
-  return rows.map((r) => r.note);
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,14 +21,12 @@ export async function POST(req: NextRequest) {
     if (!message) return NextResponse.json({ error: "Empty message." }, { status: 400 });
 
     const corrections = await recentCorrections(userId);
-    const result = await converse({ userId, message, currentItems, history, corrections });
+    const { learned, ...result } = await converse({ userId, message, currentItems, history, corrections });
 
-    // Learning: a message that refines an existing analysis is genuine feedback.
-    // Persist it so future analyses apply the same correction.
-    if (currentItems.length > 0) {
-      const food = currentItems[0]?.name || "meal";
-      await sql`INSERT INTO corrections (user_id, food, note) VALUES (${userId}, ${food}, ${message.slice(0, 280)})`;
-    }
+    // Learning: only keep a reusable rule the model extracted from a real
+    // correction ("user's usual rice portion is 1 cup") — not every chat line,
+    // which used to fill future prompts with noise like "add a banana".
+    if (learned) await saveCorrection(userId, currentItems[0]?.name || "meal", learned);
 
     return NextResponse.json(result);
   } catch (e) {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSchema, sql } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
+import { saveCorrection } from "@/lib/corrections";
 import type { FoodItem, FoodLog } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -45,6 +46,10 @@ export async function POST(req: NextRequest) {
     const meal: string = b.meal || "snack";
     const groupId: string | null = b.group_id || null;
     const groupLabel: string | null = b.group_label || null;
+    // corrections the user made to AI estimates before logging (see Add screen)
+    const learned: { food: string; note: string }[] = Array.isArray(b.learned)
+      ? b.learned.filter((l: unknown) => l && typeof (l as { note?: unknown }).note === "string").slice(0, 5)
+      : [];
     if (!date || !DATE_RE.test(date)) {
       return NextResponse.json({ error: "Valid date required." }, { status: 400 });
     }
@@ -63,6 +68,7 @@ export async function POST(req: NextRequest) {
                 ${groupId}, ${groupLabel})`;
       }
     });
+    for (const l of learned) await saveCorrection(userId, String(l.food || "meal"), l.note);
     return NextResponse.json({ items: await fetchDay(userId, date) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

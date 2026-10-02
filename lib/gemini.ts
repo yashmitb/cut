@@ -1,5 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalysisResult, FoodItem } from "./types";
+import { macroMismatch } from "./macrocheck";
 import { ensureSchema, sql } from "./db";
 
 export type KeySource = "saved" | "env" | "none";
@@ -123,15 +124,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  *  - bad key → surface immediately
  *  - everything exhausted → RateLimitedError (clean "try later")
  */
-async function runWithModels<T>(primary: string, fn: (model: string) => Promise<T>): Promise<T> {
+async function runWithModels<T>(primary: string, fn: (model: string) => Promise<T>): Promise<{ res: T; model: string }> {
   const models = modelChain(primary);
   let last: unknown;
   for (const model of models) {
     for (let attempt = 0; ; attempt++) {
       try {
-        return await fn(model);
+        return { res: await fn(model), model };
       } catch (e) {
         last = e;
+        // no key linked: every model will fail the same way — say so, don't
+        // dress it up as "hit the daily limit" after retrying the whole chain
+        if ((e as ErrorWithCode)?.code === "NO_KEY") throw e;
         const kind = classify(e);
         console.warn(`[gemini] "${model}" failed (${kind}, try ${attempt + 1})`);
         if (kind === "fatal") throw e;
@@ -147,6 +151,9 @@ async function runWithModels<T>(primary: string, fn: (model: string) => Promise<
   console.warn("[gemini] all fallback models exhausted", last);
   throw new RateLimitedError();
 }
+
+/** Lighter fallback models are noticeably worse at portions — say so in the UI. */
+export const isLiteModel = (model: string) => /lite/i.test(model);
 
 /** Turn any AI error into a clean HTTP payload (status + code the client uses). */
 export function aiErrorPayload(e: unknown): { status: number; body: { error: string; code?: string } } {
@@ -222,10 +229,11 @@ const itemSchema = {
     sugar: { type: Type.NUMBER, description: "grams" },
     sodium: { type: Type.NUMBER, description: "milligrams" },
     confidence: { type: Type.NUMBER, description: "0..1 confidence in THIS item's portion + macros" },
-    assumptions: { type: Type.STRING, description: "What you assumed: cooking oil, sauces, prep method. Empty if obvious." },
+    assumptions: { type: Type.STRING, description: "What you assumed: sauces, prep method. Empty if obvious." },
+    added_fat: { type: Type.BOOLEAN, description: "true ONLY for the separate cooking-oil/butter item; false for every food" },
   },
-  required: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber", "sugar", "sodium", "confidence"],
-  propertyOrdering: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber", "sugar", "sodium", "confidence", "assumptions"],
+  required: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber", "sugar", "sodium", "confidence", "added_fat"],
+  propertyOrdering: ["name", "quantity", "calories", "protein", "carbs", "fat", "fiber", "sugar", "sodium", "confidence", "assumptions", "added_fat"],
 };
 
 const analysisSchema = {
@@ -237,9 +245,14 @@ const analysisSchema = {
     clarification_question: { type: Type.STRING, description: "ONE specific question if unsure, else empty string" },
     notes: { type: Type.STRING, description: "Short friendly note for the user, or empty string" },
     reply: { type: Type.STRING, description: "Conversational reply to the user when refining, else empty string" },
+    cooked_meal: { type: Type.BOOLEAN, description: "true if any food was pan-cooked, sautéed, fried, roasted or stir-fried with fat you can't fully see" },
+    learned_preference: {
+      type: Type.STRING,
+      description: "Only when the user corrects you about THEIR food (portion habits, recipes, brands): one reusable rule, e.g. 'User's usual rice portion is 1 cup cooked'. Empty string otherwise.",
+    },
   },
-  required: ["items", "overall_confidence", "needs_clarification", "clarification_question", "notes", "reply"],
-  propertyOrdering: ["items", "overall_confidence", "needs_clarification", "clarification_question", "notes", "reply"],
+  required: ["items", "overall_confidence", "needs_clarification", "clarification_question", "notes", "reply", "cooked_meal", "learned_preference"],
+  propertyOrdering: ["items", "overall_confidence", "needs_clarification", "clarification_question", "notes", "reply", "cooked_meal", "learned_preference"],
 };
 
 // ---------------------------------------------------------------------------
@@ -261,11 +274,13 @@ Turn a food photo or a text description into precise, per-item nutrition estimat
 PORTION ESTIMATION (the hard part — do it carefully)
 - Use visible scale cues to size portions: a dinner plate ≈ 27 cm / 10.5 in, a fork ≈ 19 cm, a teaspoon, a standard soda can ≈ 355 ml, a deck of cards ≈ 3 oz of meat, a closed fist ≈ 1 cup, a thumb ≈ 1 tbsp.
 - Estimate the portion AS SERVED (cooked weight on the plate), not raw.
-- Account for hidden calories a cutter must not miss: cooking oil/butter on vegetables and proteins (a typical sautéed dish has 1–2 tbsp added fat), salad dressings, sauces, glazes, sugar in drinks. When in doubt, do NOT lowball — slightly conservative (higher) calorie estimates protect the deficit.
+- Account for hidden calories a cutter must not miss: salad dressings, sauces, glazes, sugar in drinks. When in doubt, do NOT lowball — slightly conservative (higher) calorie estimates protect the deficit.
+- COOKING FAT GOES IN ITS OWN ITEM. Oil, butter or ghee used to cook the food (a typical sautéed dish has 1–2 tbsp) is invisible in a photo, so never fold it into another item's numbers. Add ONE separate item named "Cooking oil" (or "Butter"/"Ghee") with quantity in tsp/tbsp and added_fat=true, and set cooked_meal=true. The user can then set the exact amount. Visible condiments the user adds (butter pat on toast, dressing) are normal items, not added_fat.
 - Break the plate into every DISTINCT component (protein, starch, vegetable, sauce, drink) as separate items.
 
 NUTRITION VALUES
 - All macro values are grams and represent the WHOLE portion shown, not per 100 g.
+- Keep each item internally consistent: calories should be close to 4×protein + 4×carbs + 9×fat.
 - sodium is in milligrams.
 - Use realistic USDA-style values for how the food was actually prepared (grilled vs fried changes fat a lot).
 
@@ -298,11 +313,16 @@ function coerceItem(raw: Partial<FoodItem>): FoodItem {
     sodium: Math.round(n(raw.sodium)),
     confidence: typeof raw.confidence === "number" ? Math.min(1, Math.max(0, raw.confidence)) : 0.5,
     assumptions: raw.assumptions ? String(raw.assumptions).slice(0, 240) : undefined,
+    ...(raw.added_fat ? { added_fat: true } : {}),
   };
 }
 
 function coerceResult(parsed: Record<string, unknown>): AnalysisResult {
-  const items = Array.isArray(parsed.items) ? parsed.items.map((i) => coerceItem(i as Partial<FoodItem>)) : [];
+  const items = (Array.isArray(parsed.items) ? parsed.items.map((i) => coerceItem(i as Partial<FoodItem>)) : []).map((it) => {
+    // calories that don't add up from the macros can't both be right — mark it
+    // unsure (the review screen shows the macro-implied number with a fix button)
+    return macroMismatch(it) == null ? it : { ...it, confidence: Math.min(it.confidence, 0.6) };
+  });
   const minConf = items.length ? Math.min(...items.map((i) => i.confidence)) : 1;
   const overall =
     typeof parsed.overall_confidence === "number"
@@ -314,6 +334,7 @@ function coerceResult(parsed: Record<string, unknown>): AnalysisResult {
     needs_clarification: Boolean(parsed.needs_clarification) || minConf < 0.65,
     clarification_question: (parsed.clarification_question as string) || (parsed.reply as string) || null,
     notes: (parsed.notes as string) || null,
+    cooked: Boolean(parsed.cooked_meal) || items.some((i) => i.added_fat),
   };
 }
 
@@ -340,7 +361,7 @@ export async function analyzeImage(
   hint?: string
 ): Promise<AnalysisResult> {
   const { key, visionModel } = await resolveConfig(userId);
-  const res = await runWithModels(visionModel, (model) =>
+  const { res, model: used } = await runWithModels(visionModel, (model) =>
     clientFor(key).models.generateContent({
       model,
       contents: [
@@ -364,7 +385,7 @@ export async function analyzeImage(
       },
     })
   );
-  return coerceResult(parseJSON(res.text ?? "{}"));
+  return { ...coerceResult(parseJSON(res.text ?? "{}")), model: used, lite: isLiteModel(used) };
 }
 
 export interface ChatTurn {
@@ -384,7 +405,7 @@ export async function converse(opts: {
   currentItems?: FoodItem[];
   history?: ChatTurn[];
   corrections?: string[];
-}): Promise<AnalysisResult> {
+}): Promise<AnalysisResult & { learned: string | null }> {
   const { userId, message, currentItems = [], history = [], corrections = [] } = opts;
 
   const context =
@@ -398,7 +419,7 @@ export async function converse(opts: {
   ];
 
   const { key, textModel } = await resolveConfig(userId);
-  const res = await runWithModels(textModel, (model) =>
+  const { res, model: used } = await runWithModels(textModel, (model) =>
     clientFor(key).models.generateContent({
       model,
       contents,
@@ -417,7 +438,8 @@ export async function converse(opts: {
   const result = coerceResult(parsed);
   // surface the conversational reply through notes for the client
   result.notes = (parsed.reply as string) || result.notes;
-  return result;
+  const learned = typeof parsed.learned_preference === "string" ? parsed.learned_preference.trim().slice(0, 280) : "";
+  return { ...result, model: used, lite: isLiteModel(used), learned: learned || null };
 }
 
 /**
@@ -458,7 +480,7 @@ export async function suggestMeal(opts: {
     : `No specific craving — pick something they'd likely enjoy for ${meal}.`;
 
   const { key, textModel } = await resolveConfig(userId);
-  const res = await runWithModels(textModel, (model) =>
+  const { res } = await runWithModels(textModel, (model) =>
     clientFor(key).models.generateContent({
       model,
       contents: `The user is ${goal} and has these macros LEFT for today:
@@ -515,7 +537,7 @@ export async function askCoach(opts: {
     ...history.map((t) => ({ role: t.role, parts: [{ text: t.text }] })),
     { role: "user" as const, parts: [{ text: message }] },
   ];
-  const res = await runWithModels(textModel, (model) =>
+  const { res } = await runWithModels(textModel, (model) =>
     clientFor(key).models.generateContent({
       model,
       contents,

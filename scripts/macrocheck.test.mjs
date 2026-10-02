@@ -1,0 +1,32 @@
+import { atwaterKcal, macroMismatch, currentFatLevel, setFatLevel, addedFatTbsp } from "../.test-out/macrocheck.js";
+import assert from "node:assert";
+let passed = 0;
+const eq = (name, a, b) => { assert.deepStrictEqual(a, b, name); passed++; console.log("  ✓", name); };
+const item = (o) => ({ name: "x", quantity: "", calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0, confidence: 0.9, ...o });
+
+console.log("atwater / mismatch");
+eq("chicken 6oz: 4*53+9*6", atwaterKcal({ protein: 53, carbs: 0, fat: 6 }), 266);
+eq("consistent item passes", macroMismatch(item({ calories: 270, protein: 53, fat: 6 })), null);
+eq("made-up calories flagged → implied", macroMismatch(item({ calories: 450, protein: 53, fat: 6 })), 266);
+eq("within 15% passes", macroMismatch(item({ calories: 300, protein: 53, fat: 6 })), null);
+eq("tiny items skipped", macroMismatch(item({ calories: 30, protein: 1 })), null);
+eq("beer skipped (alcohol kcal)", macroMismatch(item({ name: "IPA beer", calories: 200, carbs: 13, protein: 2 })), null);
+eq("'peanut butter' is not alcohol", macroMismatch(item({ name: "Peanut butter", calories: 400, protein: 8, carbs: 6, fat: 16 })), 200);
+
+console.log("cooking fat");
+const plate = [item({ name: "Chicken", calories: 270, protein: 53, fat: 6 })];
+eq("no fat item → none", currentFatLevel(plate), "none");
+const normal = setFatLevel(plate, "normal");
+eq("normal → 1 tbsp oil, 119 kcal, 13.5 g fat", normal.at(-1), { ...item({ name: "Cooking oil", quantity: "1 tbsp", calories: 119, fat: 13.5, confidence: 1 }), added_fat: true });
+eq("food items untouched", normal[0], plate[0]);
+eq("reads back as normal", currentFatLevel(normal), "normal");
+eq("heavy replaces (no duplicates)", setFatLevel(normal, "heavy").filter((i) => i.added_fat).length, 1);
+eq("heavy = 238 kcal", setFatLevel(normal, "heavy").at(-1).calories, 238);
+eq("none removes it", setFatLevel(normal, "none"), plate);
+const butter = [...plate, item({ name: "Butter", quantity: "1 tbsp", calories: 100, fat: 11, added_fat: true })];
+eq("AI's butter guess reads as normal", currentFatLevel(butter), "normal");
+eq("keeps butter, uses butter values (light = 34 kcal)", setFatLevel(butter, "light").at(-1).calories, 34);
+eq("AI 1.5 tbsp (between presets) → nothing highlighted", currentFatLevel([item({ name: "Cooking oil", calories: 179, fat: 20, added_fat: true })]), null);
+eq("…and reports 1.5 tbsp", Math.round(addedFatTbsp([item({ name: "Cooking oil", calories: 179, fat: 20, added_fat: true })]) * 10) / 10, 1.5);
+eq("AI ~2 tbsp (230 kcal) → heavy", currentFatLevel([item({ name: "Olive oil", calories: 230, fat: 26, added_fat: true })]), "heavy");
+console.log(`\nALL ${passed} MACROCHECK ASSERTIONS PASSED`);

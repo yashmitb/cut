@@ -8,7 +8,8 @@ import { fileToScaledDataUrl } from "@/lib/image";
 import { sumTotals } from "@/lib/format";
 import { todayLocal } from "@/lib/nutrition";
 import { MEAL_META, MEAL_ORDER, mealForHour } from "@/lib/types";
-import type { FoodItem, Favorite, MealType } from "@/lib/types";
+import type { AnalysisResult, FoodItem, Favorite, MealType } from "@/lib/types";
+import { FAT_LEVELS, addedFatTbsp, currentFatLevel, macroMismatch, setFatLevel, type FatLevel } from "@/lib/macrocheck";
 import {
   CameraIcon,
   CheckIcon,
@@ -34,6 +35,26 @@ function shiftDate(date: string, delta: number): string {
   const dt = new Date(y, m - 1, d + delta);
   const p = (n: number) => String(n).padStart(2, "0");
   return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
+// When the user fixes an AI estimate by hand before logging, that's the best
+// signal there is — turn real changes into notes future analyses will apply.
+function learnedFromEdits(ai: FoodItem[], final: FoodItem[]): { food: string; note: string }[] {
+  const out: { food: string; note: string }[] = [];
+  for (const f of final) {
+    if (f.added_fat) continue; // set per meal with the oil chips, not a habit
+    const a = ai.find((x) => x.name.trim().toLowerCase() === f.name.trim().toLowerCase());
+    if (!a) continue;
+    const kcalChanged = Math.abs(f.calories - a.calories) > Math.max(30, a.calories * 0.15);
+    const qtyChanged = (f.quantity || "").trim() !== (a.quantity || "").trim();
+    const proteinChanged = Math.abs(f.protein - a.protein) > Math.max(5, a.protein * 0.2);
+    if (!kcalChanged && !qtyChanged && !proteinChanged) continue;
+    out.push({
+      food: f.name,
+      note: `${f.name}: AI estimated ${a.quantity ? `"${a.quantity}" ` : ""}≈ ${Math.round(a.calories)} kcal / ${Math.round(a.protein)} g protein; the user corrected it to ${f.quantity ? `"${f.quantity}" ` : ""}≈ ${Math.round(f.calories)} kcal / ${Math.round(f.protein)} g protein.`,
+    });
+  }
+  return out.slice(0, 5);
 }
 
 // scale a food item's macros by a portion multiplier (½, 1, 1½, 2…)
@@ -90,6 +111,9 @@ function AddInner() {
   const [textInput, setTextInput] = useState("");
   const [source, setSource] = useState<"image" | "manual" | "chat">("manual");
   const [needsClarify, setNeedsClarify] = useState(false);
+  // what the AI last said (to learn from the user's edits) + how it answered
+  const [aiItems, setAiItems] = useState<FoodItem[]>([]);
+  const [meta, setMeta] = useState<{ cooked: boolean; model?: string; lite?: boolean }>({ cooked: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -137,7 +161,7 @@ function AddInner() {
       setStage("loading");
       setLoadingMsg("Reading your plate…");
       const res = await api.analyze(dataUrl, "image/jpeg");
-      applyResult(res.items, res.notes, res.clarification_question, res.needs_clarification);
+      applyResult(res);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
       setStage("input");
@@ -153,17 +177,19 @@ function AddInner() {
     setLoadingMsg("Crunching the numbers…");
     try {
       const res = await api.chat(msg, [], []);
-      applyResult(res.items, res.notes, res.clarification_question, res.needs_clarification);
+      applyResult(res);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
       setStage("input");
     }
   }
 
-  function applyResult(newItems: FoodItem[], notes: string | null, clarify: string | null, needs: boolean) {
-    setItems(newItems);
-    setNeedsClarify(needs);
-    const opener = needs && clarify ? clarify : notes;
+  function applyResult(res: AnalysisResult) {
+    setItems(res.items);
+    setAiItems(res.items);
+    setMeta({ cooked: !!res.cooked, model: res.model, lite: res.lite });
+    setNeedsClarify(res.needs_clarification);
+    const opener = res.needs_clarification && res.clarification_question ? res.clarification_question : res.notes;
     setChat(opener ? [{ role: "model", text: opener }] : []);
     setStage("review");
   }
@@ -277,6 +303,8 @@ function AddInner() {
       const history = chat.map((m) => ({ role: m.role, text: m.text }));
       const res = await api.chat(msg, items, history);
       setItems(res.items);
+      setAiItems(res.items);
+      setMeta((m) => ({ cooked: m.cooked || !!res.cooked, model: res.model, lite: res.lite }));
       setNeedsClarify(res.needs_clarification);
       setChat((c) => [...c, { role: "model", text: res.notes || "Updated." }]);
     } catch (e) {
@@ -301,7 +329,7 @@ function AddInner() {
         groupOn && items.length > 1
           ? { group_id: crypto.randomUUID(), group_label: groupName.trim() || items[0].name }
           : undefined;
-      await api.addItems(date, items, source, meal, group);
+      await api.addItems(date, items, source, meal, group, learnedFromEdits(aiItems, items));
       router.replace(backToDay);
     } catch (e) {
       if (!isCancel(e)) setError((e as Error).message);
@@ -499,12 +527,28 @@ function AddInner() {
             </div>
           )}
 
+          {meta.lite && (
+            <div className="flex gap-2.5 p-3 rounded-2xl mb-3 text-xs" style={{ background: "rgba(247,197,159,0.08)", border: "1px solid rgba(247,197,159,0.22)" }}>
+              <span style={{ color: "var(--p-warn)" }} className="flex-shrink-0"><WarnIcon width={15} height={15} /></span>
+              <span>Your free AI quota for the best model ran out, so a lighter model ({meta.model}) made this estimate. It&apos;s less accurate with portions — double-check the amounts.</span>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2.5 mb-4">
             {items.map((it, i) => (
               <ItemCard key={i} item={it} onChange={(p) => editItem(i, p)} onRemove={() => removeItem(i)} />
             ))}
             {items.length === 0 && <p className="text-center text-[var(--muted)] text-sm py-6">No items — describe your meal below.</p>}
           </div>
+
+          {/* cooking fat — invisible in photos, so the user sets it in one tap */}
+          {(meta.cooked || items.some((i) => i.added_fat)) && (
+            <CookingFat items={items} onChange={setItems} />
+          )}
+
+          {meta.model && !meta.lite && (
+            <p className="text-[11px] text-[var(--faint)] -mt-2 mb-3 px-1">Estimated by {meta.model}. Values are estimates — edit anything that looks off.</p>
+          )}
 
           {/* combine into one group */}
           {items.length > 1 && (
@@ -574,8 +618,42 @@ function AddInner() {
   );
 }
 
+// "How much oil/butter was it cooked in?" — replaces the AI's guess with a
+// fixed USDA amount (see lib/macrocheck), the biggest blind spot in photo logging.
+function CookingFat({ items, onChange }: { items: FoodItem[]; onChange: (items: FoodItem[]) => void }) {
+  const level = currentFatLevel(items);
+  const pick = (l: FatLevel) => onChange(setFatLevel(items, l));
+  return (
+    <div className="glass card p-3.5 mb-3" role="group" aria-label="Cooking oil or butter">
+      <p className="text-sm font-semibold">Cooked in oil or butter?</p>
+      <p className="text-xs text-[var(--muted)] mb-2.5">
+        The camera can&apos;t see it — 1 tbsp of oil is ~120 kcal.
+        {level === null && <> AI guessed <b className="text-[var(--fg)]">{Math.round(addedFatTbsp(items) * 10) / 10} tbsp</b> — tap to set it.</>}
+      </p>
+      <div className="grid grid-cols-4 gap-1.5">
+        {FAT_LEVELS.map((f) => (
+          <button
+            key={f.level}
+            type="button"
+            onClick={() => pick(f.level)}
+            aria-pressed={level === f.level}
+            className="rounded-xl py-2 text-center pressable"
+            style={level === f.level
+              ? { background: "rgba(247,217,160,0.16)", border: "1px solid rgba(247,217,160,0.5)", color: "var(--fg)" }
+              : { background: "rgba(255,255,255,0.03)", border: "1px solid var(--line)", color: "var(--muted)" }}
+          >
+            <span className="block text-xs font-semibold">{f.label}</span>
+            <span className="block text-[10px] text-[var(--faint)]">{f.qty || "0"}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ItemCard({ item, onChange, onRemove }: { item: FoodItem; onChange: (p: Partial<FoodItem>) => void; onRemove: () => void }) {
   const low = item.confidence < 0.65;
+  const implied = macroMismatch(item);
   const num = (k: keyof FoodItem, label: string, color?: string) => (
     <label className="flex flex-col items-center gap-0.5">
       <span className="text-[9px] uppercase tracking-wide" style={{ color: color || "var(--faint)" }}>{label}</span>
@@ -610,6 +688,14 @@ function ItemCard({ item, onChange, onRemove }: { item: FoodItem; onChange: (p: 
         {num("fat", "F", "var(--p-fat)")}
         {num("fiber", "Fiber", "var(--p-fiber)")}
       </div>
+      {implied != null && (
+        <div className="flex items-center justify-between gap-2 mt-2 text-[11px]" style={{ color: "var(--p-warn)" }}>
+          <span>Macros add up to ~{implied} kcal, not {Math.round(item.calories)}.</span>
+          <button type="button" onClick={() => onChange({ calories: implied })} className="chip pressable !py-0.5 !px-2 flex-shrink-0" style={{ color: "var(--fg)" }}>
+            Use {implied}
+          </button>
+        </div>
+      )}
       {item.assumptions && <p className="text-[11px] text-[var(--faint)] mt-2 italic">Assumed: {item.assumptions}</p>}
     </div>
   );

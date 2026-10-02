@@ -43,8 +43,9 @@ export const api = {
     items: FoodItem[],
     source: string,
     meal: MealType,
-    group?: { group_id: string; group_label: string }
-  ) => call<{ items: FoodLog[] }>("Logging food", "/api/log", post({ date, items, source, meal, ...(group || {}) })),
+    group?: { group_id: string; group_label: string },
+    learned?: { food: string; note: string }[]
+  ) => call<{ items: FoodLog[] }>("Logging food", "/api/log", post({ date, items, source, meal, ...(group || {}), ...(learned?.length ? { learned } : {}) })),
   editItem: (body: unknown) => call<{ items: FoodLog[] }>("Saving changes", "/api/log", { method: "PATCH", body: JSON.stringify(body) }),
   moveGroup: (group_id: string, patch: { meal?: MealType; group_label?: string }) =>
     call<{ items: FoodLog[] }>("Updating group", "/api/log", { method: "PATCH", body: JSON.stringify({ group_id, ...patch }) }),

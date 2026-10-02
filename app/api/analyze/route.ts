@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureSchema, sql } from "@/lib/db";
+import { ensureSchema } from "@/lib/db";
 import { getUserId, unauthorized } from "@/lib/supabase/auth";
+import { recentCorrections } from "@/lib/corrections";
 import { analyzeImage, aiErrorPayload } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-async function recentCorrections(userId: string): Promise<string[]> {
-  const rows = await sql<{ note: string }[]>`
-    SELECT note FROM corrections WHERE user_id = ${userId}
-    ORDER BY created_at DESC LIMIT 15`;
-  return rows.map((r) => r.note);
-}
 
 export async function POST(req: NextRequest) {
   try {

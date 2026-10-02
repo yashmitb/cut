@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsc lib/nutrition.ts lib/types.ts lib/reminders.ts --outDir .test-out --target es2022 --module es2022 --moduleResolution bundler --skipLibCheck --noEmitOnError false && node scripts/nutrition.test.mjs && node scripts/reminders.test.mjs"
+    "test": "tsc lib/nutrition.ts lib/types.ts lib/reminders.ts lib/macrocheck.ts --outDir .test-out --target es2022 --module es2022 --moduleResolution bundler --skipLibCheck --noEmitOnError false && node scripts/nutrition.test.mjs && node scripts/reminders.test.mjs && node scripts/macrocheck.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
