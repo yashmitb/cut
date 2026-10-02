@@ -12,6 +12,16 @@ import { CheckIcon, ChevronDown, CopyIcon, Mic, ScaleIcon, Smartphone, StarFille
 // Back Tap, or Siri. This card hands out a personal link and step-by-step recipes.
 
 const STORE = "cut.quickToken.v1";
+
+// Signed, generic shortcuts in /public/shortcuts (scripts/shortcuts/build.sh).
+// Each asks for the user's link once when added — we copy it on tap.
+const INSTALLS: { slug: string; name: string; sub: string }[] = [
+  { slug: "log-food", name: "Log Food", sub: "Menu of your starred foods — start here" },
+  { slug: "tell-cut", name: "Tell Cut", sub: "Say what you ate; AI logs it" },
+  { slug: "log-weight", name: "Log Weight", sub: "Type today's weight" },
+  { slug: "whats-left", name: "What's Left", sub: "Calories & protein left today" },
+  { slug: "log-favorite", name: "Log Favorite", sub: "One button for one food — add it once per food" },
+];
 const tz = () => {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch { return "UTC"; }
 };
@@ -25,7 +35,9 @@ export default function QuickLogCard() {
   const [token, setToken] = useState<string | null>(null);
   const [foods, setFoods] = useState<{ name: string; fav: boolean }[]>([]);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState<string | null>("menu");
+  const [open, setOpen] = useState<string | null>(null);
+  const [showManual, setShowManual] = useState(false);
+  const [copiedFor, setCopiedFor] = useState<string | null>(null);
   const [tryMsg, setTryMsg] = useState<string | null>(null);
   const [confirmOff, setConfirmOff] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +111,15 @@ export default function QuickLogCard() {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const base = token ? `${origin}/api/quick?t=${token}` : "";
 
+  // Copy the link inside the tap (iOS only allows clipboard writes during a
+  // user gesture), then let the link open the shortcut file.
+  function copyForInstall(slug: string) {
+    navigator.clipboard?.writeText(base).then(
+      () => { setCopiedFor(slug); setTimeout(() => setCopiedFor((c) => (c === slug ? null : c)), 4000); },
+      () => {}
+    );
+  }
+
   return (
     <section className="glass card p-4 mb-4" aria-labelledby="quicklog-title">
       <div className="flex items-center gap-2.5">
@@ -144,6 +165,45 @@ export default function QuickLogCard() {
             {tryMsg && <span className="text-[11px] text-[var(--muted)] min-w-0">{tryMsg}</span>}
           </div>
 
+          <div className="rounded-2xl p-3 flex flex-col gap-2" style={{ background: "rgba(181,232,201,0.06)", border: "1px solid rgba(181,232,201,0.22)" }}>
+            <p className="text-sm font-semibold">Add to Shortcuts in one tap</p>
+            <p className="text-[11px] text-[var(--muted)] leading-relaxed -mt-1">
+              Tap <b className="text-[var(--fg)]">Add</b> — your link is copied automatically. Shortcuts opens and asks for it: <b className="text-[var(--fg)]">paste</b>, then tap Add Shortcut.
+            </p>
+            <Copy value={base} />
+            {INSTALLS.map((it) => (
+              <div key={it.slug} className="flex items-center gap-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">{it.name}</span>
+                  <span className="block text-[11px] text-[var(--muted)] leading-tight">{it.sub}</span>
+                </span>
+                <a
+                  href={`/shortcuts/${it.slug}.shortcut`}
+                  target="_blank"
+                  rel="noopener"
+                  onClick={() => copyForInstall(it.slug)}
+                  className="chip pressable flex-shrink-0"
+                  style={copiedFor === it.slug ? { color: "var(--p-fiber)", borderColor: "rgba(181,232,201,0.4)" } : { color: "var(--fg)" }}
+                  aria-label={`Add the ${it.name} shortcut`}
+                >
+                  {copiedFor === it.slug ? <><CheckIcon width={12} height={12} /> Link copied</> : "Add"}
+                </a>
+              </div>
+            ))}
+            <p className="text-[11px] text-[var(--faint)] leading-relaxed">
+              If it only downloads, tap the file in Safari&apos;s downloads (or the Files app) and it opens in Shortcuts. Then put them on your Home Screen — see “Put them where you&apos;ll tap them” below.
+            </p>
+          </div>
+
+          <Recipe id="place" open={open} setOpen={setOpen} icon={<Smartphone width={14} height={14} />} title="Put them where you'll tap them" sub="Home Screen, Lock Screen, Action Button, Back Tap">
+            <PlaceList />
+          </Recipe>
+
+          <button onClick={() => setShowManual((v) => !v)} aria-expanded={showManual} className="text-[11px] text-[var(--muted)] underline self-start pressable">
+            {showManual ? "Hide" : "Or build them by hand (step by step)"}
+          </button>
+
+          {showManual && <>
           <Recipe id="menu" open={open} setOpen={setOpen} icon={<StarFilledIcon width={14} height={14} />} title="Quick menu (start here)" sub="One button that lists your starred foods — tap one, it's logged">
             <Step n={1}>Open the <b>Shortcuts</b> app → <b>+</b> → name it <b>Log food</b>.</Step>
             <Step n={2}>Add <b>Get Contents of URL</b> and paste:<Copy value={`${base}&list=1`} /></Step>
@@ -190,15 +250,7 @@ export default function QuickLogCard() {
             <Step n={2}>What&apos;s left today: <b>Get Contents of URL</b> → <b>Show Notification</b>:<Copy value={`${base}&status=1`} /></Step>
           </Recipe>
 
-          <Recipe id="place" open={open} setOpen={setOpen} icon={<Smartphone width={14} height={14} />} title="Put them where you'll tap them" sub="Home Screen, Lock Screen, Action Button, Back Tap">
-            <ul className="text-xs text-[var(--muted)] leading-relaxed flex flex-col gap-1.5 list-disc pl-4">
-              <li><b className="text-[var(--fg)]">Home Screen widget:</b> put your Cut shortcuts in a Shortcuts folder → long-press the Home Screen → Edit → Add Widget → Shortcuts → choose that folder. You pick exactly which buttons show.</li>
-              <li><b className="text-[var(--fg)]">Lock Screen / Control Center</b> (iOS 18+): edit Control Center or the Lock Screen buttons → Add a Control → Shortcut.</li>
-              <li><b className="text-[var(--fg)]">Action Button</b> (iPhone 15 Pro and later): Settings → Action Button → Shortcut → Log food.</li>
-              <li><b className="text-[var(--fg)]">Back Tap:</b> Settings → Accessibility → Touch → Back Tap → Double Tap → Log food.</li>
-              <li><b className="text-[var(--fg)]">Siri:</b> say any shortcut&apos;s name.</li>
-            </ul>
-          </Recipe>
+          </>}
 
           <div className="flex items-center justify-between gap-2 mt-1">
             <p className="text-[11px] text-[var(--faint)] leading-snug">Keep this link private — anyone with it can log to your account.</p>
@@ -214,6 +266,18 @@ export default function QuickLogCard() {
         </div>
       )}
     </section>
+  );
+}
+
+function PlaceList() {
+  return (
+    <ul className="text-xs text-[var(--muted)] leading-relaxed flex flex-col gap-1.5 list-disc pl-4">
+      <li><b className="text-[var(--fg)]">Home Screen widget:</b> put your Cut shortcuts in a Shortcuts folder → long-press the Home Screen → Edit → Add Widget → Shortcuts → choose that folder. You pick exactly which buttons show.</li>
+      <li><b className="text-[var(--fg)]">Lock Screen / Control Center</b> (iOS 18+): edit Control Center or the Lock Screen buttons → Add a Control → Shortcut.</li>
+      <li><b className="text-[var(--fg)]">Action Button</b> (iPhone 15 Pro and later): Settings → Action Button → Shortcut → Log Food.</li>
+      <li><b className="text-[var(--fg)]">Back Tap:</b> Settings → Accessibility → Touch → Back Tap → Double Tap → Log Food.</li>
+      <li><b className="text-[var(--fg)]">Siri:</b> say any shortcut&apos;s name, e.g. “Hey Siri, Tell Cut”.</li>
+    </ul>
   );
 }
 

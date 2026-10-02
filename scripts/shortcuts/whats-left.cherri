@@ -1,0 +1,11 @@
+/* Cut — What's Left: calories and protein left today. */
+#define name What's Left
+#define color orange
+#define glyph list
+#include 'actions/web'
+#include 'actions/text'
+#question link "Paste your Cut link (Cut → Profile → Log from your Home Screen → Copy my link)" ""
+
+const base = text(link)
+const result = downloadURL("{base}&status=1")
+showNotification("{result}", "Cut")

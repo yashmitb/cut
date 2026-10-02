@@ -1,0 +1,13 @@
+/* Cut — Tell Cut: say what you ate; Cut's AI logs it. */
+#define name Tell Cut
+#define color blue
+#define glyph microphone
+#include 'actions/web'
+#include 'actions/text'
+#question link "Paste your Cut link (Cut → Profile → Log from your Home Screen → Copy my link)" ""
+
+const base = text(link)
+const said = listen()
+const encoded = urlEncode(said)
+const result = downloadURL("{base}&say={encoded}")
+showNotification("{result}", "Cut")

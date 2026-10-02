@@ -127,7 +127,7 @@ async function handle(req: NextRequest, p: Params): Promise<Response> {
   if (p.status) return text(await remaining(userId, date));
 
   if (p.weight) {
-    const v = parseFloat(p.weight);
+    const v = parseFloat(p.weight.replace(",", ".")); // Shortcuts' Number input is locale-formatted
     const prof = await sql<{ units: string }[]>`SELECT units FROM profile WHERE id = ${userId}`;
     const unit = p.unit === "kg" || p.unit === "lb" ? p.unit : prof[0]?.units === "metric" ? "kg" : "lb";
     const kg = unit === "kg" ? v : lbToKg(v);
@@ -168,7 +168,7 @@ async function handle(req: NextRequest, p: Params): Promise<Response> {
 
 function fail(e: unknown): Response {
   const code = (e as { code?: string })?.code;
-  if (code === "RATE_LIMIT") return text("The AI is out of free requests for now — try food=… or log in the app.", 429);
+  if (code === "RATE_LIMIT") return text("Cut AI is out of free requests for now — use Log Food, or try again later.", 429);
   if (code === "NO_KEY") return text("No Gemini key linked — add one in Cut → Profile → AI connection.", 400);
   console.error("[quick]", e);
   return text("Something went wrong — try again.", 500);

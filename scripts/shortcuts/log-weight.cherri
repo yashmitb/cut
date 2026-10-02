@@ -1,0 +1,12 @@
+/* Cut — Log Weight: type today's weight (your Cut units). */
+#define name Log Weight
+#define color purple
+#define glyph weight
+#include 'actions/web'
+#include 'actions/text'
+#question link "Paste your Cut link (Cut → Profile → Log from your Home Screen → Copy my link)" ""
+
+const base = text(link)
+const weight = prompt("Today's weight", "Number")
+const result = downloadURL("{base}&weight={weight}")
+showNotification("{result}", "Cut")

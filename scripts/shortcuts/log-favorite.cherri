@@ -1,0 +1,14 @@
+/* Cut — one-tap button for a single food. Install once per food. */
+#define name Log Favorite
+#define color yellow
+#define glyph lightningBolt
+#include 'actions/web'
+#include 'actions/text'
+#question link "Paste your Cut link (Cut → Profile → Log from your Home Screen → Copy my link)" ""
+#question foodName "Which food should this button log? (name as it appears in Cut)" "Protein shake"
+
+const base = text(link)
+const name = text(foodName)
+const encoded = urlEncode(name)
+const result = downloadURL("{base}&food={encoded}")
+showNotification("{result}", "Cut")

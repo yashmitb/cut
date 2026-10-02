@@ -1,0 +1,15 @@
+/* Cut — Log Food: pick one of your starred / recent foods and log it. */
+#define name Log Food
+#define color green
+#define glyph apple
+#include 'actions/web'
+#include 'actions/text'
+#question link "Paste your Cut link (Cut → Profile → Log from your Home Screen → Copy my link)" ""
+
+const base = text(link)
+const listed = downloadURL("{base}&list=1")
+const foods = splitText("{listed}", "\n")
+const food = chooseFromList(foods, "What did you have?")
+const encoded = urlEncode(food)
+const result = downloadURL("{base}&food={encoded}")
+showNotification("{result}", "Cut")
